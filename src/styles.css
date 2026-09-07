@@ -2819,3 +2819,7 @@ body { background:linear-gradient(135deg,#fff,#f8f8f9 55%,#fff4f4); color:var(--
 
 @font-face {font-family:"Noto Sans Bengali";src:url("/fonts/NotoSansBengali-Regular.ttf") format("truetype");font-weight:400;font-display:swap;}
 .loadingPage {min-height:100dvh;display:flex;align-items:center;justify-content:center;gap:16px;font-size:18px;background:#f5f7fa;}
+
+.accessFeedback{padding:12px 14px;border:1px solid;border-radius:10px;margin:12px 0;line-height:1.7;font-size:14px;overflow-wrap:anywhere}.accessSuccess{color:#166534;background:#f0fdf4;border-color:#86efac}.accessFailure{color:#991b1b;background:#fef2f2;border-color:#fca5a5}
+
+.rowActions .workerApprove{background:#166534;color:#fff;border-color:#166534}.rowActions button:disabled{opacity:.6;cursor:wait}

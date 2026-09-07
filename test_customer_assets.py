@@ -51,12 +51,22 @@ class CustomerAssetsTest(unittest.TestCase):
                    'username':'registration_test','password':'test-password-123','referralCode':'TESTREF'}
         status, body = self.request('/api/worker/register', payload, user='unknown')
         self.assertEqual(status, 201, body)
+        self.assertEqual(json.loads(body)["message"], "আপনার রেজিস্ট্রেশন সফলভাবে জমা হয়েছে। অ্যাডমিনের অনুমোদনের জন্য অপেক্ষা করুন।")
         with server.db() as con:
             row = con.execute("SELECT * FROM users WHERE username='registration_test'").fetchone()
             self.assertEqual(row['status'], 'pending')
             self.assertEqual(row['nid_number'], '')
             self.assertFalse(row['registration_json'])
         self.assertFalse((server.DATA_DIR / 'worker_registration').exists())
+        approve = urllib.request.Request(self.url + '/api/admin/users/' + str(row['id']),
+            data=json.dumps({'status':'approved'}).encode(),method='PUT',
+            headers={'Cookie':'ds_session=admin','Content-Type':'application/json'})
+        with urllib.request.urlopen(approve) as response: self.assertEqual(response.status,200)
+        with server.db() as con:
+            approved = con.execute("SELECT status,approved_by FROM users WHERE id=?",(row['id'],)).fetchone()
+            self.assertEqual(approved['status'],'approved')
+            self.assertEqual(approved['approved_by'],'admin')
+
         self.assertEqual(self.request('/api/worker/register',payload,user='unknown')[0],400)
         payload.update(username='invalid_referral',referralCode='NO_SUCH_CODE')
         self.assertEqual(self.request('/api/worker/register',payload,user='unknown')[0],400)

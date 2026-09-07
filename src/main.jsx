@@ -2203,11 +2203,13 @@ function Access({ setupRequired, onAccess }) {
   const [mode, setMode] = useState("login");
   const [registration, setRegistration] = useState(()=>({fullName:"",phone:"",email:"",referralCode:new URLSearchParams(location.search).get("ref")?.toUpperCase()||""}));
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const [busy, setBusy] = useState(false);
   async function submit(e) {
     e.preventDefault();
     setBusy(true);
     setError("");
+    setSuccess("");
     try {
       const registering = !setupRequired && mode === "register";
       const response = await fetch(
@@ -2220,7 +2222,7 @@ function Access({ setupRequired, onAccess }) {
       );
       const result = await readJson(response);
       if (!response.ok) throw new Error(result.error);
-      if (registering) { setMode("login"); setError(result.message); setPassword(""); }
+      if (registering) { setMode("login"); setSuccess(result.message || "আপনার রেজিস্ট্রেশন সফলভাবে জমা হয়েছে। অ্যাডমিনের অনুমোদনের জন্য অপেক্ষা করুন।"); setPassword(""); }
       else onAccess(result);
     } catch (e) {
       setError(e.message || "Login হয়নি");
@@ -2239,7 +2241,7 @@ function Access({ setupRequired, onAccess }) {
             ? "প্রথমবার ব্যবহারের জন্য নিজের username ও password দিন।"
             : mode === "register" ? "নাম ও যোগাযোগের তথ্য জমা দিন। Admin approve করলে login করতে পারবেন।" : "নিজের username ও password দিয়ে Login করুন।"}
         </p>
-        {!setupRequired && <div className="accessTabs"><button type="button" className={mode==="login"?"active":""} onClick={()=>{setMode("login");setError("")}}>Login</button><button type="button" className={mode==="register"?"active":""} onClick={()=>{setMode("register");setError("")}}>Worker Registration</button></div>}
+        {!setupRequired && <div className="accessTabs"><button type="button" className={mode==="login"?"active":""} onClick={()=>{setMode("login");setError("");setSuccess("")}}>Login</button><button type="button" className={mode==="register"?"active":""} onClick={()=>{setMode("register");setError("");setSuccess("")}}>Worker Registration</button></div>}
         {mode === "register" && !setupRequired && <div className="registrationFields">
           {[["fullName","পূর্ণ নাম"],["phone","Mobile number"],["email","Email (optional)"],["referralCode","Referral code (required)"]].map(([key,label])=><label key={key}><span>{label}</span><input value={registration[key]} onChange={e=>setRegistration({...registration,[key]:key==="referralCode"?e.target.value.toUpperCase():e.target.value})} required={!["email","address"].includes(key)}/></label>)}
         </div>}
@@ -2263,7 +2265,8 @@ function Access({ setupRequired, onAccess }) {
             minLength={mode === "register" ? "8" : "6"}
           />
         </label>
-        {error && <div className="formError">{error}</div>}
+        {success && <div className="accessFeedback accessSuccess" role="status">{success}</div>}
+        {error && <div className="accessFeedback accessFailure" role="alert">{error}</div>}
         <button className="primary full" disabled={busy}>
           {busy
             ? "অপেক্ষা করুন…"
@@ -2550,6 +2553,19 @@ function AdminUserControl({ users, reload, master }) {
   const [form, setForm] = useState({ fullName: "", username: "", password: "", role: "worker" });
   const [tree, setTree] = useState([]);
   const [profile, setProfile] = useState(null);
+  const [changing, setChanging] = useState(null);
+  const [feedback, setFeedback] = useState(null);
+  async function reviewWorker(worker, status) {
+    setChanging(worker.id); setFeedback(null);
+    try {
+      const response = await fetch(`/api/admin/users/${worker.id}`, {method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify({status})});
+      const result = await readJson(response);
+      if (!response.ok) throw new Error(result.error || "পরিবর্তন সেভ হয়নি।");
+      await reload();
+      setFeedback({ok:true, text:status === "approved" ? "Worker অনুমোদিত হয়েছে। এখন তিনি লগইন করতে পারবেন।" : "Worker-এর আবেদন বাতিল করা হয়েছে।"});
+    } catch (error) { setFeedback({ok:false,text:error.message}); }
+    finally { setChanging(null); }
+  }
   async function loadTree() { const response = await fetch("/api/admin/referrals"); const result = await readJson(response); if (response.ok) setTree(result.users || []); }
   useEffect(() => { loadTree().catch(() => {}); }, [users]);
   async function createUser(event) {
@@ -2576,11 +2592,12 @@ function AdminUserControl({ users, reload, master }) {
   const byParent = parent => tree.filter(item => (item.referred_by || null) === parent);
   function Tree({ parent = null, level = 0 }) { return <div className="referralTreeLevel">{byParent(parent).map(item => <article key={item.id} style={{ marginLeft: level * 16 }}><div><b>{item.full_name}</b><small>@{item.username} • {item.role} • {item.referral_code}</small></div><button className="recordEdit" onClick={() => openProfile(item.id)}><UserRound size={14} /> Profile</button><Tree parent={item.id} level={level + 1} /></article>)}</div>; }
   return <>
+    {feedback && <div className={`accessFeedback ${feedback.ok ? "accessSuccess" : "accessFailure"}`} role={feedback.ok ? "status" : "alert"}>{feedback.text}</div>}
     <div className="adminUserGrid">
       <form className="portalPanel adminCreateUser" onSubmit={createUser}><div className="panelTitle"><div><small>ACCOUNT CONTROL</small><h2>নতুন account তৈরি করুন</h2></div><ShieldCheck /></div><label><span>পূর্ণ নাম</span><input required value={form.fullName} onChange={e => setForm({ ...form, fullName: e.target.value })} /></label><label><span>Username</span><input required value={form.username} onChange={e => setForm({ ...form, username: e.target.value })} /></label><label><span>Password</span><input required minLength="8" type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} /></label><label><span>Account type</span><select value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}><option value="worker">Worker</option>{master && <option value="subadmin">Subadmin</option>}</select></label><button className="primary full"><Plus /> Account Save করুন</button></form>
       <section className="portalPanel adminReferralPanel"><div className="panelTitle"><div><small>REFERRAL NETWORK</small><h2>Referral Tree</h2></div><span className="codeBadge">MASTER: {"MASTER-BIPUL"}</span></div><p className="secureNotice">Master referral code: <b>MASTER-BIPUL</b></p><Tree /></section>
     </div>
-    <section className="portalPanel"><div className="panelTitle"><div><small>ALL ACCOUNTS</small><h2>Worker ও Subadmin</h2></div></div><div className="portalTable">{users.map(item => <article key={item.id}><div><b>{item.full_name}</b><small>@{item.username} • {item.role}</small></div><div><b>{item.referral_code}</b><small>{item.phone || "Phone নেই"}</small></div><span className={`statusTag ${item.status}`}>{statusLabel[item.status] || item.status}</span><div className="rowActions"><button onClick={() => openProfile(item.id)}><UserRound /> Profile দেখুন</button></div></article>)}</div></section>
+    <section className="portalPanel"><div className="panelTitle"><div><small>ALL ACCOUNTS</small><h2>Worker ও Subadmin</h2></div></div><div className="portalTable">{users.map(item => <article key={item.id}><div><b>{item.full_name}</b><small>@{item.username} • {item.role}</small></div><div><b>{item.referral_code}</b><small>{item.phone || "Phone নেই"}</small></div><span className={`statusTag ${item.status}`}>{statusLabel[item.status] || item.status}</span><div className="rowActions">{item.role === "worker" && item.status === "pending" && <><button className="workerApprove" disabled={changing !== null} onClick={() => reviewWorker(item,"approved")}><Check/> {changing === item.id ? "অপেক্ষা করুন…" : "অনুমোদন করুন"}</button><button className="danger" disabled={changing !== null} onClick={() => reviewWorker(item,"rejected")}><X/> বাতিল করুন</button></>}<button onClick={() => openProfile(item.id)}><UserRound /> Profile দেখুন</button></div></article>)}</div></section>
     {profile && <div className="modalBackdrop" onMouseDown={() => setProfile(null)}><section className="settingsModal adminProfileModal" onMouseDown={e => e.stopPropagation()}><button className="modalClose" onClick={() => setProfile(null)}><X /></button><small>USER PROFILE</small><h2>{profile.full_name}</h2><p>@{profile.username} • {profile.role} • {statusLabel[profile.status] || profile.status}</p><div className="profileFacts"><article><span>Referral code</span><b>{profile.referral_code || "—"}</b></article><article><span>Available balance</span><b>{money(profile.available)}</b></article><article><span>Total earned</span><b>{money(profile.earned)}</b></article><article><span>Reserved/withdraw</span><b>{money(profile.reserved)}</b></article></div><p><b>Phone:</b> {profile.phone || "—"}<br /><b>Email:</b> {profile.email || "—"}<br /><b>Address:</b> {profile.address || "—"}</p><h3>কাজের হিসাব</h3>{profile.customers.map(item => <p className="ledgerRow" key={item.id}><span>{item.serial} — {item.name}<small>{statusLabel[item.workflow_status] || item.workflow_status}</small></span></p>)}<button className="primary full" onClick={() => adjustBalance("add")}><Wallet /> ব্যালেন্স যোগ করুন</button><button className="secondary full" onClick={() => adjustBalance("deduct")}><Wallet /> ব্যালেন্স কমান</button></section></div>}
   </>;
 }

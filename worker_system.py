@@ -113,10 +113,10 @@ def save_data_image(value, folder, name):
     value = str(value or "")
     match = re.match(r"data:image/(jpeg|jpg|png|webp);base64,(.+)$", value, re.I | re.S)
     if not match:
-        raise ValueError(f"{name} image αªªαª┐αª¿")
+        raise ValueError(f"{name} image দিন")
     raw = base64.b64decode(match.group(2), validate=True)
     if not 5_000 <= len(raw) <= 12 * 1024 * 1024:
-        raise ValueError(f"{name} image αª╕αªáαª┐αªò αª¿αºƒ")
+        raise ValueError(f"{name} image সঠিক নয়")
     ext = ".jpg" if match.group(1).lower() in ("jpeg", "jpg") else "." + match.group(1).lower()
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / (name + ext)
@@ -173,7 +173,7 @@ def award(con, worker, customer_id, event_key, kind, amount, reason, actor):
         VALUES(?,?,?,?,?,?,?,?)""", (worker["id"], customer_id, event_key, kind, amount, reason, actor, now()))
     if not result.rowcount:
         return
-    notify(con, worker["id"], "αª¿αªñαºüαª¿ αªåαºƒ αª»αºïαªù αª╣αºƒαºçαª¢αºç", f"{reason}: αº│{amount / 100:g}")
+    notify(con, worker["id"], "নতুন আয় যোগ হয়েছে", f"{reason}: ৳{amount / 100:g}")
     if worker["referred_by"] and kind in ("collection_reward", "completion_reward", "bonus", "target_bonus") and amount > 0:
         referrer = con.execute("SELECT id,status FROM users WHERE id=?", (worker["referred_by"],)).fetchone()
         if referrer and referrer["status"] == "approved":
@@ -181,8 +181,8 @@ def award(con, worker, customer_id, event_key, kind, amount, reason, actor):
             commission = round(amount * float(rate_row[0] if rate_row else 10) / 100)
             con.execute("""INSERT OR IGNORE INTO transactions(user_id,customer_id,event_key,type,amount_paisa,reason,created_by,created_at,source_user_id)
                 VALUES(?,?,?,?,?,?,?,?,?)""", (referrer["id"], customer_id, "referral:" + event_key,
-                "referral_commission", commission, f"{worker['full_name'] or worker['username']}-αªÅαª░ αªåαºƒαºçαª░ referral commission", actor, now(), worker["id"]))
-            notify(con, referrer["id"], "Referral commission", f"αº│{commission / 100:g} αª»αºïαªù αª╣αºƒαºçαª¢αºç")
+                "referral_commission", commission, f"{worker['full_name'] or worker['username']}-এর আয়ের referral commission", actor, now(), worker["id"]))
+            notify(con, referrer["id"], "Referral commission", f"৳{commission / 100:g} যোগ হয়েছে")
 
 
 def target_progress(con, user_id):
@@ -215,14 +215,14 @@ def dispatch(handler, method, path, db, data_dir, digest):
             password = str(data.get("password", ""))
             full_name = str(data.get("fullName", "")).strip()
             phone = digits(data.get("phone"))
-            if len(username) < 3 or len(password) < 8: raise ValueError("Username αªòαª«αª¬αªòαºìαª╖αºç αº⌐ αªÅαª¼αªé password αº« αªàαªòαºìαª╖αª░αºçαª░ αªªαª┐αª¿")
-            if not full_name or len(phone) < 10: raise ValueError("αª¬αºéαª░αºìαªú αª¿αª╛αª« αªô αª╕αªáαª┐αªò mobile number αªªαª┐αª¿")
+            if len(username) < 3 or len(password) < 8: raise ValueError("Username কমপক্ষে ৩ এবং password ৮ অক্ষরের দিন")
+            if not full_name or len(phone) < 10: raise ValueError("পূর্ণ নাম ও সঠিক mobile number দিন")
             with db() as con:
-                if con.execute("SELECT 1 FROM users WHERE username=? COLLATE NOCASE", (username,)).fetchone(): raise ValueError("αªÅαªç username αªåαªùαºç αª¼αºìαª»αª¼αª╣αª╛αª░ αª╣αºƒαºçαª¢αºç")
+                if con.execute("SELECT 1 FROM users WHERE username=? COLLATE NOCASE", (username,)).fetchone(): raise ValueError("এই username আগে ব্যবহার হয়েছে")
                 referral = str(data.get("referralCode", "")).strip().upper()
-                if not referral: raise ValueError("Registration-αªÅαª░ αª£αª¿αºìαª» Referral code αª¼αª╛αªºαºìαª»αªñαª╛αª«αºéαª▓αªò")
+                if not referral: raise ValueError("Registration-এর জন্য Referral code বাধ্যতামূলক")
                 referrer = con.execute("SELECT id FROM users WHERE referral_code=? AND status='approved'", (referral,)).fetchone()
-                if not referrer: raise ValueError("Referral code αª╕αªáαª┐αªò αª¿αºƒ αªàαªÑαª¼αª╛ Worker approved αª¿αºƒ")
+                if not referrer: raise ValueError("Referral code সঠিক নয় অথবা Worker approved নয়")
                 salt = secrets.token_hex(16)
                 cur = con.execute("""INSERT INTO users(username,password_hash,salt,created_at,role,status,full_name,phone,email,address,
                     payout_account_name,payout_account_number,payout_branch,nid_hash,nid_last4,referred_by,nid_number)
@@ -232,15 +232,15 @@ def dispatch(handler, method, path, db, data_dir, digest):
                 user_id = cur.lastrowid
                 con.execute("UPDATE users SET referral_code=? WHERE id=?", (f"TW{user_id:05d}", user_id))
                 audit(con, username, "worker_registered", "user", user_id)
-            return handler.reply(201, {"ok": True, "message": "Registration αª£αª«αª╛ αª╣αºƒαºçαª¢αºçαÑñ Admin approval-αªÅαª░ αª£αª¿αºìαª» αªàαª¬αºçαªòαºìαª╖αª╛ αªòαª░αºüαª¿αÑñ"})
+            return handler.reply(201, {"ok": True, "message": "আপনার রেজিস্ট্রেশন সফলভাবে জমা হয়েছে। অ্যাডমিনের অনুমোদনের জন্য অপেক্ষা করুন।"})
         except Exception as error:
             return handler.reply(400, {"error": str(error)})
 
     user = handler.current_user()
     if not user:
-        return handler.reply(401, {"error": "αªåαª¼αª╛αª░ Login αªòαª░αºüαª¿"})
+        return handler.reply(401, {"error": "আবার Login করুন"})
     if user["status"] != "approved":
-        return handler.reply(403, {"error": "Account αª¼αª░αºìαªñαª«αª╛αª¿αºç locked/suspended αªåαª¢αºç"})
+        return handler.reply(403, {"error": "Account বর্তমানে locked/suspended আছে"})
 
     if path == "/api/worker/dashboard" and method == "GET":
         with db() as con:
@@ -301,10 +301,10 @@ def dispatch(handler, method, path, db, data_dir, digest):
         try:
             data = handler.body(8192); account_name = str(data.get("accountName", "")).strip()
             account_number = digits(data.get("accountNumber")); branch = str(data.get("branch", "")).strip()
-            if not account_name or len(account_number) < 8 or not branch: raise ValueError("Account name, number αªô branch αªªαª┐αª¿")
+            if not account_name or len(account_number) < 8 or not branch: raise ValueError("Account name, number ও branch দিন")
             with db() as con:
                 current = con.execute("SELECT payout_account_number FROM users WHERE id=?", (user["id"],)).fetchone()
-                if current and current[0]: raise ValueError("Bank account αªÅαªòαª¼αª╛αª░ Save αª╣αºƒαºçαª¢αºç; αª¬αª░αª┐αª¼αª░αºìαªñαª¿αºçαª░ αª£αª¿αºìαª» Admin-αªÅαª░ αª╕αª╛αªÑαºç αª»αºïαªùαª╛αª»αºïαªù αªòαª░αºüαª¿")
+                if current and current[0]: raise ValueError("Bank account একবার Save হয়েছে; পরিবর্তনের জন্য Admin-এর সাথে যোগাযোগ করুন")
                 con.execute("UPDATE users SET payout_account_name=?,payout_account_number=?,payout_branch=? WHERE id=?",
                             (account_name, account_number, branch, user["id"]))
                 audit(con, user["username"], "bank_account_added", "user", user["id"], {"last4": account_number[-4:]})
@@ -314,8 +314,8 @@ def dispatch(handler, method, path, db, data_dir, digest):
     if path == "/api/worker/password" and method == "POST":
         try:
             data = handler.body(8192); old_password = str(data.get("oldPassword", "")); new_password = str(data.get("newPassword", ""))
-            if not hmac.compare_digest(user["password_hash"], digest(old_password, user["salt"])): raise ValueError("αª¼αª░αºìαªñαª«αª╛αª¿ password αª╕αªáαª┐αªò αª¿αºƒ")
-            if len(new_password) < 8: raise ValueError("αª¿αªñαºüαª¿ password αªòαª«αª¬αªòαºìαª╖αºç αº« αªàαªòαºìαª╖αª░αºçαª░ αªªαª┐αª¿")
+            if not hmac.compare_digest(user["password_hash"], digest(old_password, user["salt"])): raise ValueError("বর্তমান password সঠিক নয়")
+            if len(new_password) < 8: raise ValueError("নতুন password কমপক্ষে ৮ অক্ষরের দিন")
             salt = secrets.token_hex(16)
             with db() as con:
                 con.execute("UPDATE users SET password_hash=?,salt=? WHERE id=?", (digest(new_password, salt), salt, user["id"]))
@@ -327,7 +327,7 @@ def dispatch(handler, method, path, db, data_dir, digest):
     if match and method == "GET":
         with db() as con:
             row = con.execute("SELECT * FROM customers WHERE id=? AND created_by=?", (int(match.group(1)), user["username"])).fetchone()
-            if not row: return handler.reply(404, {"error": "Customer αª¬αª╛αªôαºƒαª╛ αª»αª╛αºƒαª¿αª┐"})
+            if not row: return handler.reply(404, {"error": "Customer পাওয়া যায়নি"})
             request = con.execute("SELECT * FROM recollections WHERE customer_id=? AND status='requested' ORDER BY id DESC LIMIT 1", (row["id"],)).fetchone()
         case = json.loads(row["case_json"] or "{}")
         people = case.get("people") or []
@@ -344,9 +344,9 @@ def dispatch(handler, method, path, db, data_dir, digest):
             with db() as con:
                 row = con.execute("SELECT * FROM customers WHERE id=? AND created_by=? AND workflow_status='correction_required'", (customer_id,user["username"])).fetchone()
                 request = con.execute("SELECT * FROM recollections WHERE customer_id=? AND status='requested' ORDER BY id DESC LIMIT 1", (customer_id,)).fetchone()
-                if not row or not request: raise ValueError("αªÅαªç Customer-αªÅαª░ active recollection αª¿αºçαªç")
+                if not row or not request: raise ValueError("এই Customer-এর active recollection নেই")
                 allowed = set(json.loads(request["fields_json"])); patch = data.get("patch") or {}
-                if not patch or any(key not in allowed for key in patch): raise ValueError("αª╢αºüαªºαºü Admin αªÜαª╛αªôαºƒαª╛ αªñαªÑαºìαª» αªåαª¼αª╛αª░ αª£αª«αª╛ αªªαª┐αª¿")
+                if not patch or any(key not in allowed for key in patch): raise ValueError("শুধু Admin চাওয়া তথ্য আবার জমা দিন")
                 case = json.loads(row["case_json"] or "{}")
                 for key,value in patch.items():
                     parts=key.split("."); target=case
@@ -367,9 +367,9 @@ def dispatch(handler, method, path, db, data_dir, digest):
             data = handler.body(8192); amount = round(float(data.get("amount", 0)) * 100)
             with db() as con:
                 bank = con.execute("SELECT payout_account_name,payout_account_number,payout_branch FROM users WHERE id=?", (user["id"],)).fetchone()
-                if not bank or not bank["payout_account_number"]: raise ValueError("αªåαªùαºç Profile αªÑαºçαªòαºç City Bank account αª»αºïαªù αªòαª░αºüαª¿")
+                if not bank or not bank["payout_account_number"]: raise ValueError("আগে Profile থেকে City Bank account যোগ করুন")
                 earned, reserved, available = balance(con, user["id"])
-                if amount <= 0 or amount > available: raise ValueError("Available balance-αªÅαª░ αª«αªºαºìαª»αºç amount αªªαª┐αª¿")
+                if amount <= 0 or amount > available: raise ValueError("Available balance-এর মধ্যে amount দিন")
                 con.execute("INSERT INTO withdrawals(user_id,amount_paisa,status,account_name,account_number,branch,note,requested_at) VALUES(?,?,'requested',?,?,?,?,?)",
                             (user["id"], amount, bank["payout_account_name"], bank["payout_account_number"], bank["payout_branch"], str(data.get("note", ""))[:300], now()))
                 audit(con, user["username"], "withdrawal_requested", "user", user["id"], {"amountPaisa": amount})
@@ -377,7 +377,7 @@ def dispatch(handler, method, path, db, data_dir, digest):
         except Exception as error: return handler.reply(400, {"error": str(error)})
 
     if not is_admin_role(user["role"]):
-        return handler.reply(403, {"error": "αª╢αºüαªºαºü Admin αªÅαªç αªòαª╛αª£ αªòαª░αªñαºç αª¬αª╛αª░αª¼αºçαª¿"})
+        return handler.reply(403, {"error": "শুধু Admin এই কাজ করতে পারবেন"})
 
     if path == "/api/admin/dashboard" and method == "GET":
         with db() as con:
@@ -405,10 +405,10 @@ def dispatch(handler, method, path, db, data_dir, digest):
     if path == "/api/admin/finance/adjust" and method == "POST":
         try:
             data = handler.body(8192); amount = round(float(data.get("amount", 0)) * 100); reason = str(data.get("reason", "")).strip(); worker_id = int(data.get("userId", 0))
-            if not amount or not reason or not worker_id: raise ValueError("Worker, amount αªÅαª¼αªé αªòαª╛αª░αªú αªªαª┐αª¿")
+            if not amount or not reason or not worker_id: raise ValueError("Worker, amount এবং কারণ দিন")
             with db() as con:
                 worker = con.execute("SELECT * FROM users WHERE id=? AND role='worker'", (worker_id,)).fetchone()
-                if not worker: raise ValueError("Worker αª¬αª╛αªôαºƒαª╛ αª»αª╛αºƒαª¿αª┐")
+                if not worker: raise ValueError("Worker পাওয়া যায়নি")
                 award(con, worker, None, "adjustment:" + secrets.token_hex(12), "manual_adjustment", amount, reason, user["username"])
                 audit(con, user["username"], "finance_adjusted", "user", worker_id, {"amountPaisa": amount, "reason": reason})
             return handler.reply(201, {"ok": True})
@@ -417,7 +417,7 @@ def dispatch(handler, method, path, db, data_dir, digest):
     if path == "/api/admin/reward-settings" and method == "PUT":
         try:
             data = handler.body(8192); collection = round(float(data.get("collectionReward", 0)) * 100); completion = round(float(data.get("completionReward", 0)) * 100); referral = float(data.get("referralPercent", 0))
-            if collection < 0 or completion < 0 or not 0 <= referral <= 100: raise ValueError("Reward settings αª╕αªáαª┐αªò αª¿αºƒ")
+            if collection < 0 or completion < 0 or not 0 <= referral <= 100: raise ValueError("Reward settings সঠিক নয়")
             with db() as con:
                 for key, value in (("collection_reward_paisa", collection), ("completion_reward_paisa", completion), ("referral_percent", referral)):
                     con.execute("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, str(value)))
@@ -483,7 +483,7 @@ def dispatch(handler, method, path, db, data_dir, digest):
     if path == "/api/admin/settings" and method == "PUT":
         try:
             data = handler.body(8192); whatsapp = digits(data.get("supportWhatsApp"))
-            if whatsapp and len(whatsapp) < 10: raise ValueError("αª╕αªáαª┐αªò WhatsApp number αªªαª┐αª¿")
+            if whatsapp and len(whatsapp) < 10: raise ValueError("সঠিক WhatsApp number দিন")
             with db() as con:
                 con.execute("INSERT INTO settings(key,value) VALUES('support_whatsapp',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (whatsapp,))
                 audit(con, user["username"], "support_settings_changed", "settings", "support")
@@ -500,8 +500,8 @@ def dispatch(handler, method, path, db, data_dir, digest):
         try:
             data = handler.body(8 * 1024 * 1024); title = str(data.get("title", "")).strip(); description = str(data.get("description", "")).strip()
             image_data = str(data.get("image", "")); target_id = int(data["targetUserId"]) if data.get("targetUserId") else None
-            if not title or not description: raise ValueError("Notification title αªô description αªªαª┐αª¿")
-            if image_data and not image_data.startswith("data:image/"): raise ValueError("Notification image αª╕αªáαª┐αªò αª¿αºƒ")
+            if not title or not description: raise ValueError("Notification title ও description দিন")
+            if image_data and not image_data.startswith("data:image/"): raise ValueError("Notification image সঠিক নয়")
             with db() as con:
                 cur = con.execute("INSERT INTO announcements(title,description,image_data,target_user_id,active,created_by,created_at) VALUES(?,?,?,?,1,?,?)",
                                   (title, description, image_data, target_id, user["username"], now()))
@@ -520,7 +520,7 @@ def dispatch(handler, method, path, db, data_dir, digest):
     if match and method == "GET":
         with db() as con:
             row = con.execute("SELECT * FROM users WHERE id=? AND role='worker'", (int(match.group(1)),)).fetchone()
-            if not row: return handler.reply(404,{"error":"Worker αª¬αª╛αªôαºƒαª╛ αª»αª╛αºƒαª¿αª┐"})
+            if not row: return handler.reply(404,{"error":"Worker পাওয়া যায়নি"})
         files = json.loads(row["registration_json"] or "{}"); images={}
         for key,path_value in files.items():
             p=Path(path_value)
@@ -534,14 +534,14 @@ def dispatch(handler, method, path, db, data_dir, digest):
         with db() as con:
             row=con.execute("""SELECT c.*,u.full_name worker_name,u.phone worker_phone,u.referral_code
                 FROM customers c LEFT JOIN users u ON u.username=c.created_by WHERE c.id=?""",(int(match.group(1)),)).fetchone()
-            if not row:return handler.reply(404,{"error":"Customer αª¬αª╛αªôαºƒαª╛ αª»αª╛αºƒαª¿αª┐"})
+            if not row:return handler.reply(404,{"error":"Customer পাওয়া যায়নি"})
             history=[dict(r) for r in con.execute("SELECT * FROM recollections WHERE customer_id=? ORDER BY id DESC",(row["id"],))]
         return handler.reply(200,{"customer":{**dict(row),"case":json.loads(row["case_json"] or "{}"),"case_json":"","recollections":history}})
 
     if match and method == "PUT":
         try:
             data=handler.body(40*1024*1024); case=data.get("case")
-            if not isinstance(case,dict):raise ValueError("Case details αª¬αª╛αªôαºƒαª╛ αª»αª╛αºƒαª¿αª┐")
+            if not isinstance(case,dict):raise ValueError("Case details পাওয়া যায়নি")
             people=case.get("people") or [{}]; applicant=people[0]
             with db() as con:
                 result=con.execute("""UPDATE customers SET case_json=?,name=?,name_bn=?,customer_number=?,phone=?,email=?,revision=revision+1,
@@ -549,7 +549,7 @@ def dispatch(handler, method, path, db, data_dir, digest):
                     str((case.get("details") or {}).get("nameBn","")),str(applicant.get("nid","")),
                     str((case.get("details") or {}).get("phone","")),str((case.get("details") or {}).get("email","")),
                     user["username"],now(),int(match.group(1))))
-                if not result.rowcount:raise ValueError("Customer αª¬αª╛αªôαºƒαª╛ αª»αª╛αºƒαª¿αª┐")
+                if not result.rowcount:raise ValueError("Customer পাওয়া যায়নি")
                 audit(con,user["username"],"admin_case_edited","customer",match.group(1))
             return handler.reply(200,{"ok":True})
         except Exception as error:return handler.reply(400,{"error":str(error)})
@@ -558,10 +558,10 @@ def dispatch(handler, method, path, db, data_dir, digest):
     if match and method == "PUT":
         try:
             data = handler.body(16384); status = str(data.get("status", "")).strip()
-            if status and status not in ("approved", "rejected", "suspended"): raise ValueError("Status αª╕αªáαª┐αªò αª¿αºƒ")
+            if status and status not in ("approved", "rejected", "suspended"): raise ValueError("Status সঠিক নয়")
             with db() as con:
                 current = con.execute("SELECT * FROM users WHERE id=? AND role='worker'", (int(match.group(1)),)).fetchone()
-                if not current: raise ValueError("Worker αª¬αª╛αªôαºƒαª╛ αª»αª╛αºƒαª¿αª┐")
+                if not current: raise ValueError("Worker পাওয়া যায়নি")
                 values = {
                     "full_name": str(data.get("fullName", current["full_name"])).strip(), "phone": digits(data.get("phone", current["phone"])),
                     "email": str(data.get("email", current["email"])).strip(), "address": str(data.get("address", current["address"])).strip(),
@@ -572,7 +572,7 @@ def dispatch(handler, method, path, db, data_dir, digest):
                     (status or current["status"], values["full_name"], values["phone"], values["email"], values["address"], values["nid_number"],
                      blind_index(data_dir, values["nid_number"]), values["nid_number"][-4:], values["payout_account_name"], values["payout_account_number"], values["payout_branch"],
                      user["username"], now() if status == "approved" else current["approved_at"], str(data.get("reason", current["rejection_reason"]))[:500], int(match.group(1))))
-                if not result.rowcount: raise ValueError("Worker αª¬αª╛αªôαºƒαª╛ αª»αª╛αºƒαª¿αª┐")
+                if not result.rowcount: raise ValueError("Worker পাওয়া যায়নি")
                 audit(con, user["username"], "worker_" + (status or "profile_edited"), "user", match.group(1), {"fields": list(data)})
             return handler.reply(200, {"ok": True})
         except Exception as error: return handler.reply(400, {"error": str(error)})
@@ -582,28 +582,28 @@ def dispatch(handler, method, path, db, data_dir, digest):
         try:
             customer_id = int(match.group(1)); data = handler.body(16384); action = str(data.get("action", ""))
             statuses = {"approve": "data_approved", "correction": "correction_required", "processing": "bank_processing", "complete": "completed", "reject": "rejected"}
-            if action not in statuses: raise ValueError("Review action αª╕αªáαª┐αªò αª¿αºƒ")
+            if action not in statuses: raise ValueError("Review action সঠিক নয়")
             with db() as con:
                 row = con.execute("SELECT created_by,workflow_status FROM customers WHERE id=?", (customer_id,)).fetchone()
-                if not row: raise ValueError("Customer αª¬αª╛αªôαºƒαª╛ αª»αª╛αºƒαª¿αª┐")
+                if not row: raise ValueError("Customer পাওয়া যায়নি")
                 worker = con.execute("SELECT * FROM users WHERE username=?", (row["created_by"],)).fetchone()
                 account = digits(data.get("accountNumber"))
-                if action == "complete" and len(account) < 8: raise ValueError("City Bank account number αªªαª┐αª¿")
+                if action == "complete" and len(account) < 8: raise ValueError("City Bank account number দিন")
                 con.execute("UPDATE customers SET workflow_status=?,correction_note=?,bank_account_number=CASE WHEN ?!='' THEN ? ELSE bank_account_number END,data_approved_at=CASE WHEN ?='approve' THEN ? ELSE data_approved_at END,account_completed_at=CASE WHEN ?='complete' THEN ? ELSE account_completed_at END WHERE id=?",
                             (statuses[action], str(data.get("note", ""))[:1000], account, account, action, now(), action, now(), customer_id))
                 if action=="correction":
                     fields=data.get("fields") or []
                     allowed_prefixes=("people.","details.","declaration.","docs.")
-                    if not fields or any(not str(f).startswith(allowed_prefixes) for f in fields): raise ValueError("Recollection-αªÅαª░ αªàαª¿αºìαªñαªñ αªÅαªòαªƒαª┐ αª╕αªáαª┐αªò field αª¿αª┐αª░αºìαª¼αª╛αªÜαª¿ αªòαª░αºüαª¿")
+                    if not fields or any(not str(f).startswith(allowed_prefixes) for f in fields): raise ValueError("Recollection-এর অন্তত একটি সঠিক field নির্বাচন করুন")
                     con.execute("INSERT INTO recollections(customer_id,fields_json,note,status,requested_by,requested_at) VALUES(?,?,?,'requested',?,?)",
-                                (customer_id,json.dumps(fields),str(data.get("note","")).strip() or "αª¿αª┐αª░αºìαª¼αª╛αªÜαª┐αªñ αªñαªÑαºìαª» αªåαª¼αª╛αª░ αª╕αªéαªùαºìαª░αª╣ αªòαª░αºüαª¿",user["username"],now()))
-                    if worker: notify(con,worker["id"],"Recollection αª¬αºìαª░αºƒαºïαª£αª¿",str(data.get("note","")).strip() or "αª¿αª┐αª░αºìαª¼αª╛αªÜαª┐αªñ αªñαªÑαºìαª» αªåαª¼αª╛αª░ αª╕αªéαªùαºìαª░αª╣ αªòαª░αºüαª¿")
+                                (customer_id,json.dumps(fields),str(data.get("note","")).strip() or "নির্বাচিত তথ্য আবার সংগ্রহ করুন",user["username"],now()))
+                    if worker: notify(con,worker["id"],"Recollection প্রয়োজন",str(data.get("note","")).strip() or "নির্বাচিত তথ্য আবার সংগ্রহ করুন")
                 if worker and action in ("approve", "complete"):
                     setting_key = "collection_reward_paisa" if action == "approve" else "completion_reward_paisa"
                     amount_row = con.execute("SELECT value FROM settings WHERE key=?", (setting_key,)).fetchone()
                     amount = int(float(amount_row[0] if amount_row else 5000)); kind = "collection_reward" if action == "approve" else "completion_reward"
                     award(con,worker,customer_id,f"{kind}:{customer_id}",kind,amount,
-                          "αª╕αª«αºìαª¬αºéαª░αºìαªú data collection" if action=="approve" else "City Bank account completed",user["username"])
+                          "সম্পূর্ণ data collection" if action=="approve" else "City Bank account completed",user["username"])
                     target_progress(con,worker["id"])
                 audit(con, user["username"], "customer_" + action, "customer", customer_id, {"note": data.get("note", "")})
             return handler.reply(200, {"ok": True})
@@ -613,11 +613,11 @@ def dispatch(handler, method, path, db, data_dir, digest):
     if match and method == "POST":
         try:
             data = handler.body(8192); amount = round(float(data.get("amount", 0)) * 100); reason = str(data.get("reason", "")).strip()
-            if amount <= 0 or not reason: raise ValueError("Bonus amount αªÅαª¼αªé αªòαª╛αª░αªú αªªαª┐αª¿")
+            if amount <= 0 or not reason: raise ValueError("Bonus amount এবং কারণ দিন")
             with db() as con:
                 customer = con.execute("SELECT created_by FROM customers WHERE id=?", (int(match.group(1)),)).fetchone()
                 worker = con.execute("SELECT * FROM users WHERE username=?", (customer[0],)).fetchone() if customer else None
-                if not worker: raise ValueError("Worker αª¬αª╛αªôαºƒαª╛ αª»αª╛αºƒαª¿αª┐")
+                if not worker: raise ValueError("Worker পাওয়া যায়নি")
                 award(con,worker,int(match.group(1)),"bonus:"+secrets.token_hex(12),"bonus",amount,reason,user["username"])
                 audit(con, user["username"], "bonus_added", "customer", match.group(1), {"amountPaisa": amount, "reason": reason})
             return handler.reply(201, {"ok": True})
@@ -631,9 +631,9 @@ def dispatch(handler, method, path, db, data_dir, digest):
     if path == "/api/admin/targets" and method == "POST":
         try:
             data=handler.body(8192); metric=str(data.get("metric","approved"))
-            if metric not in ("approved","completed"):raise ValueError("Target metric αª╕αªáαª┐αªò αª¿αºƒ")
+            if metric not in ("approved","completed"):raise ValueError("Target metric সঠিক নয়")
             required=int(data.get("requiredCount",0)); bonus=round(float(data.get("bonus",0))*100)
-            if not str(data.get("name","")).strip() or required<1 or bonus<1:raise ValueError("Target name, count αªÅαª¼αªé bonus αªªαª┐αª¿")
+            if not str(data.get("name","")).strip() or required<1 or bonus<1:raise ValueError("Target name, count এবং bonus দিন")
             with db() as con:
                 con.execute("""INSERT INTO targets(name,metric,required_count,bonus_paisa,starts_at,ends_at,user_id,active,created_by,created_at)
                     VALUES(?,?,?,?,?,?,?,?,?,?)""",(str(data["name"]).strip(),metric,required,bonus,str(data["startsAt"]),str(data["endsAt"]),
@@ -658,10 +658,10 @@ def dispatch(handler, method, path, db, data_dir, digest):
     if match and method == "PUT":
         try:
             data = handler.body(8192); status = str(data.get("status", ""))
-            if status not in ("approved", "paid", "rejected"): raise ValueError("Withdrawal status αª╕αªáαª┐αªò αª¿αºƒ")
+            if status not in ("approved", "paid", "rejected"): raise ValueError("Withdrawal status সঠিক নয়")
             with db() as con:
                 row = con.execute("SELECT status FROM withdrawals WHERE id=?", (int(match.group(1)),)).fetchone()
-                if not row or row[0] in ("paid", "rejected"): raise ValueError("Withdrawal αªåαª░ αª¬αª░αª┐αª¼αª░αºìαªñαª¿ αªòαª░αª╛ αª»αª╛αª¼αºç αª¿αª╛")
+                if not row or row[0] in ("paid", "rejected"): raise ValueError("Withdrawal আর পরিবর্তন করা যাবে না")
                 con.execute("UPDATE withdrawals SET status=?,reference=?,note=?,processed_at=?,processed_by=? WHERE id=?",
                             (status, str(data.get("reference", ""))[:100], str(data.get("note", ""))[:300], now(), user["username"], int(match.group(1))))
                 audit(con, user["username"], "withdrawal_" + status, "withdrawal", match.group(1))
