@@ -40,8 +40,6 @@ import {
   LockKeyhole,
   Bell,
   MessageCircle,
-  Menu,
-  PanelLeftClose,
   X,
 } from "lucide-react";
 import { jsPDF } from "jspdf";
@@ -49,6 +47,9 @@ import PhotoPrintEditor from "./PhotoPrintEditor.jsx";
 import { exportName, photoPrintPdf } from "./export-model.js";
 import { buildCustomerZip } from "./customer-zip.js";
 import "./styles.css";
+import AppShell from "./AppShell.jsx";
+import {declarationCanvas,declarationPdf} from "./declaration.js";
+import {readDraft, saveDraft, deleteDraft, flushDraft, readPage, writePage} from "./draft-store.js";
 const uid = () =>
   globalThis.crypto?.randomUUID?.() ||
   `ds-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
@@ -848,65 +849,6 @@ function docPdf(o) {
   }
   return d.output("blob");
 }
-async function declarationCanvas(applicant, declaration, signature) {
-  const template = await image("/income-declaration-page1.png");
-  const canvas = document.createElement("canvas");
-  canvas.width = 1190;
-  canvas.height = 1684;
-  const g = canvas.getContext("2d");
-  g.drawImage(template, 0, 0, canvas.width, canvas.height);
-  g.fillStyle = "#111";
-  g.textBaseline = "middle";
-  const write = (value, x, y, maxWidth, size = 24) => {
-    if (!value) return;
-    g.font = `${size}px "Noto Sans Bengali", "Nirmala UI", sans-serif`;
-    g.fillText(value, x, y, maxWidth);
-  };
-  const addressLines = String(applicant.addressBn || "").split(/\n+/);
-  const first = (addressLines[0] || "").split(",").map((v) => v.trim());
-  const second = (addressLines[1] || "").split(",").map((v) => v.trim());
-  write(
-    declaration.customerName || applicant.nameBn || applicant.name,
-    210,
-    250,
-    820,
-  );
-  write(declaration.fatherName || applicant.fatherNameBn, 210, 305, 820);
-  write(declaration.motherName || applicant.motherNameBn, 210, 360, 820);
-  write(declaration.address || first[0] || applicant.addressBn, 225, 415, 800);
-  write(declaration.postOffice || first.slice(1).join(", "), 255, 470, 255, 20);
-  write(declaration.thana || second[0], 760, 470, 275, 20);
-  write(declaration.district || second[1] || second[0], 225, 524, 500, 21);
-  const description =
-    declaration.polishedDescription || declaration.rawDescription;
-  g.font = '23px "Noto Sans Bengali", "Nirmala UI", sans-serif';
-  const words = String(description || "").split(/\s+/);
-  let line = "",
-    y = 735;
-  for (const word of words) {
-    const test = line ? `${line} ${word}` : word;
-    if (g.measureText(test).width > 900 && line) {
-      g.fillText(line, 145, y);
-      line = word;
-      y += 38;
-      if (y > 970) break;
-    } else line = test;
-  }
-  if (line && y <= 970) g.fillText(line, 145, y);
-  write(declaration.monthlyIncome, 430, 1051, 160, 23);
-  write(declaration.accountNumber, 785, 1267, 260, 21);
-  if (signature) {
-    const sign = await image(signature);
-    g.drawImage(sign, 145, 1145, 330, 100);
-  }
-  return canvas;
-}
-async function declarationPdf(applicant, declaration, signature) {
-  const canvas = await declarationCanvas(applicant, declaration, signature);
-  const pdf = new jsPDF({ unit: "mm", format: "a4", compress: true });
-  pdf.addImage(canvas.toDataURL("image/jpeg", 0.94), "JPEG", 0, 0, 210, 297);
-  return pdf.output("blob");
-}
 async function customerZip(caseData) {
   async function jpeg(source) {
     const img = await image(source), canvas = document.createElement("canvas");
@@ -1625,6 +1567,7 @@ function Person({
           motherNameEn: result.motherNameEn || p.motherNameEn,
           nid: result.nid || p.nid,
           dob: result.dob || p.dob,
+          ...Object.fromEntries(["issueDate","issuePlace","village","postOffice","postCode","thana","district"].map(key=>[key,result[key]||p[key]||""])),
           addressBn: result.addressBn || p.addressBn,
           addressEn: result.addressEn || p.addressEn,
           ocrText: [p.ocrText, result.text].filter(Boolean).join("\n"),
@@ -1886,6 +1829,8 @@ function PersonDetails({ p, change, index }) {
             "input",
           ],
           ["dob", "Date of Birth", "input"],
+          ["issueDate", "ID issue date", "input"], ["issuePlace", "ID issue place", "input"],
+          ["village", "পাড়া / গ্রাম", "input"], ["postOffice", "Post office", "input"], ["postCode", "Post code", "input"], ["thana", "Thana / উপজেলা", "input"], ["district", "District / জেলা", "input"],
           ["fatherNameEn", "Father's Name (English)", "input"],
           ["motherNameEn", "Mother's Name (English)", "input"],
           ["fatherNameBn", "পিতার নাম", "input"],
@@ -2286,7 +2231,7 @@ function Access({ setupRequired, onAccess }) {
   return (
     <div className="accessPage">
       <form className="accessCard" onSubmit={submit}>
-        <img className="cityLogo accessLogo" src="/city-bank-logo.png" alt="City Bank" />
+        <img className="cityLogo accessLogo" src="/city-agent-banking-logo.png" alt="সিটি এজেন্ট ব্যাংকিং" />
         <small>CITY AGENT BANKING • SECURE ACCESS</small>
         <h1>{setupRequired ? "Admin Login তৈরি করুন" : mode === "register" ? "Worker Registration" : "স্বাগতম"}</h1>
         <p>
@@ -2338,7 +2283,20 @@ function Access({ setupRequired, onAccess }) {
   );
 }
 
+function SignatureCardUpload({customer, close}) {
+  const [revision,setRevision]=useState(null),[picture,setPicture]=useState(""),[busy,setBusy]=useState(false),[message,setMessage]=useState("");
+  useEffect(()=>{fetch(`/api/customers/${customer.id}/signature-card`).then(readJson).then(result=>{if(result.error)throw new Error(result.error);setRevision(result.revision);setPicture(result.documents?.[0]?.pages?.[0]||"");}).catch(error=>setMessage(error.message));},[customer.id]);
+  async function upload(image) {
+    if(!image || revision===null)return;
+    setPicture(image);setBusy(true);setMessage("Signature card upload হচ্ছে…");
+    try {const response=await fetch(`/api/customers/${customer.id}/signature-card`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({image,revision})});const result=await readJson(response);if(!response.ok)throw new Error(result.error);setRevision(result.revision);setMessage("Signature card Save হয়েছে। Chrome extension-এও দেখা যাবে।");}
+    catch(error){setMessage(error.message);}finally{setBusy(false);}
+  }
+  return <div className="modalBackdrop"><section className="settingsModal"><button className="modalClose" disabled={busy} aria-label="Close signature upload" onClick={close}><X/></button><h2>Upload Signature Card</h2><p>{customer.serial} — {customer.name}</p>{revision!==null&&!busy&&<Capture title="Signed signature card scan করুন" value={picture} onChange={upload}/>}<p role="status">{message || "Camera বা Gallery থেকে card নিয়ে crop নিশ্চিত করুন।"}</p></section></div>;
+}
+
 function Records({ onBack, onEditCase }) {
+  const [signatureCustomer,setSignatureCustomer]=useState(null);
   const [query, setQuery] = useState("");
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -2401,6 +2359,7 @@ function Records({ onBack, onEditCase }) {
   }
   return (
     <div className="records">
+      {signatureCustomer && <SignatureCardUpload customer={signatureCustomer} close={()=>setSignatureCustomer(null)}/>}
       <div className="recordsHead">
         <button className="secondary" onClick={onBack}>
           <ChevronLeft /> ফিরে যান
@@ -2466,6 +2425,7 @@ function Records({ onBack, onEditCase }) {
               <button className="recordEdit" onClick={() => openCase(row)}>
                 <FilePlus2 /> File Edit
               </button>
+              <button className="recordEdit" onClick={() => setSignatureCustomer(row)}><Camera/> Upload Signature Card</button>
               <button className="recordDelete" onClick={() => deleteRow(row)}>
                 <Trash2 /> Delete
               </button>
@@ -2601,9 +2561,12 @@ function AdminUserControl({ users, reload, master }) {
     setForm({ fullName: "", username: "", password: "", role: "worker" }); reload(); alert("Account তৈরি হয়েছে");
   }
   async function openProfile(id) { const response = await fetch(`/api/admin/users/${id}/profile`); const result = await readJson(response); if (!response.ok) return alert(result.error); setProfile(result.profile); }
-  async function adjustBalance() {
-    const amount = prompt("Balance amount দিন; কমাতে negative amount দিন");
-    if (amount === null || !amount) return;
+  async function adjustBalance(direction) {
+    const input = prompt(direction === "deduct" ? "কত টাকা কমাবেন? টাকার পরিমাণ লিখুন" : "কত টাকা যোগ করবেন? টাকার পরিমাণ লিখুন");
+    if (input === null || !input.trim()) return;
+    const value = Number(input);
+    if (!Number.isFinite(value) || value <= 0 || Math.round(value * 100) === 0) return alert("শূন্যের বেশি সঠিক টাকার পরিমাণ দিন");
+    const amount = direction === "deduct" ? -value : value;
     const reason = prompt("কারণ লিখুন");
     if (!reason) return;
     const response = await fetch(`/api/admin/users/${profile.id}/balance`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ amount, reason }) });
@@ -2619,7 +2582,7 @@ function AdminUserControl({ users, reload, master }) {
       <section className="portalPanel adminReferralPanel"><div className="panelTitle"><div><small>REFERRAL NETWORK</small><h2>Referral Tree</h2></div><span className="codeBadge">MASTER: {"MASTER-BIPUL"}</span></div><p className="secureNotice">Master referral code: <b>MASTER-BIPUL</b></p><Tree /></section>
     </div>
     <section className="portalPanel"><div className="panelTitle"><div><small>ALL ACCOUNTS</small><h2>Worker ও Subadmin</h2></div></div><div className="portalTable">{users.map(item => <article key={item.id}><div><b>{item.full_name}</b><small>@{item.username} • {item.role}</small></div><div><b>{item.referral_code}</b><small>{item.phone || "Phone নেই"}</small></div><span className={`statusTag ${item.status}`}>{statusLabel[item.status] || item.status}</span><div className="rowActions"><button onClick={() => openProfile(item.id)}><UserRound /> Profile দেখুন</button></div></article>)}</div></section>
-    {profile && <div className="modalBackdrop" onMouseDown={() => setProfile(null)}><section className="settingsModal adminProfileModal" onMouseDown={e => e.stopPropagation()}><button className="modalClose" onClick={() => setProfile(null)}><X /></button><small>USER PROFILE</small><h2>{profile.full_name}</h2><p>@{profile.username} • {profile.role} • {statusLabel[profile.status] || profile.status}</p><div className="profileFacts"><article><span>Referral code</span><b>{profile.referral_code || "—"}</b></article><article><span>Available balance</span><b>{money(profile.available)}</b></article><article><span>Total earned</span><b>{money(profile.earned)}</b></article><article><span>Reserved/withdraw</span><b>{money(profile.reserved)}</b></article></div><p><b>Phone:</b> {profile.phone || "—"}<br /><b>Email:</b> {profile.email || "—"}<br /><b>Address:</b> {profile.address || "—"}</p><h3>কাজের হিসাব</h3>{profile.customers.map(item => <p className="ledgerRow" key={item.id}><span>{item.serial} — {item.name}<small>{statusLabel[item.workflow_status] || item.workflow_status}</small></span></p>)}<button className="primary full" onClick={adjustBalance}><Wallet /> Balance Add / Minus</button></section></div>}
+    {profile && <div className="modalBackdrop" onMouseDown={() => setProfile(null)}><section className="settingsModal adminProfileModal" onMouseDown={e => e.stopPropagation()}><button className="modalClose" onClick={() => setProfile(null)}><X /></button><small>USER PROFILE</small><h2>{profile.full_name}</h2><p>@{profile.username} • {profile.role} • {statusLabel[profile.status] || profile.status}</p><div className="profileFacts"><article><span>Referral code</span><b>{profile.referral_code || "—"}</b></article><article><span>Available balance</span><b>{money(profile.available)}</b></article><article><span>Total earned</span><b>{money(profile.earned)}</b></article><article><span>Reserved/withdraw</span><b>{money(profile.reserved)}</b></article></div><p><b>Phone:</b> {profile.phone || "—"}<br /><b>Email:</b> {profile.email || "—"}<br /><b>Address:</b> {profile.address || "—"}</p><h3>কাজের হিসাব</h3>{profile.customers.map(item => <p className="ledgerRow" key={item.id}><span>{item.serial} — {item.name}<small>{statusLabel[item.workflow_status] || item.workflow_status}</small></span></p>)}<button className="primary full" onClick={() => adjustBalance("add")}><Wallet /> ব্যালেন্স যোগ করুন</button><button className="secondary full" onClick={() => adjustBalance("deduct")}><Wallet /> ব্যালেন্স কমান</button></section></div>}
   </>;
 }
 
@@ -2647,14 +2610,13 @@ function WorkerDetailsModal({ data, close, refresh }) {
   })}<button className="primary full" disabled={busy || request.fields.some((field) => !patch[field])} onClick={resubmit}>{busy ? "জমা হচ্ছে…" : "চাওয়া তথ্য Resubmit করুন"}</button></section>}</section></div>;
 }
 
-function WorkerDashboard({ startNew }) {
-  const [page,setPage]=useState("dashboard"),[sidebarCollapsed,setSidebarCollapsed]=useState(()=>window.innerWidth<=700),[data,setData]=useState(null),[rows,setRows]=useState([]),[ledger,setLedger]=useState({transactions:[],withdrawals:[]}),[withdrawForm,setWithdrawForm]=useState({amount:""}),[bankForm,setBankForm]=useState({accountName:"",accountNumber:"",branch:""}),[selected,setSelected]=useState(null),[profile,setProfile]=useState(null),[announcements,setAnnouncements]=useState([]),[showAnnouncement,setShowAnnouncement]=useState(true);
+function WorkerDashboard({ startNew, actions }) {
+  const [page,setPage]=useState(()=>readPage("worker", "dashboard")),[data,setData]=useState(null),[rows,setRows]=useState([]),[ledger,setLedger]=useState({transactions:[],withdrawals:[]}),[withdrawForm,setWithdrawForm]=useState({amount:""}),[bankForm,setBankForm]=useState({accountName:"",accountNumber:"",branch:""}),[selected,setSelected]=useState(null),[profile,setProfile]=useState(null),[announcements,setAnnouncements]=useState([]),[showAnnouncement,setShowAnnouncement]=useState(true);
+  useEffect(() => { writePage("worker", page); }, [page]);
   const load=async()=>{const [a,b,c,d]=await Promise.all([fetch("/api/worker/dashboard"),fetch("/api/worker/customers"),fetch("/api/worker/transactions"),fetch("/api/worker/announcements")]);const [da,dbb,dc,dd]=await Promise.all([readJson(a),readJson(b),readJson(c),readJson(d)]);if(!a.ok)throw new Error(da.error);if(!b.ok)throw new Error(dbb.error);if(!c.ok)throw new Error(dc.error);setData(da);setRows(dbb.customers||[]);setLedger(dc);setAnnouncements(dd.announcements||[]);};
   const loadProfile=async()=>{const response=await fetch("/api/worker/profile"),result=await readJson(response);if(!response.ok)throw new Error(result.error);setProfile(result.profile);};
   useEffect(()=>{load().catch(e=>alert(e.message));},[]);
   useEffect(()=>{if(["profile","referrals","support","transactions"].includes(page)&&!profile)loadProfile().catch(e=>alert(e.message));},[page]);
-  useEffect(()=>{const closeOnMobileClick=event=>{if(window.innerWidth>700)return;if(event.target.closest(".portalSidebar")||event.target.closest(".mobileMenuButton"))return;setSidebarCollapsed(true);};document.addEventListener("click",closeOnMobileClick);return()=>document.removeEventListener("click",closeOnMobileClick);},[]);
-  useEffect(()=>{if(window.innerWidth<=700)setSidebarCollapsed(true);},[page]);
   async function withdraw(){const response=await fetch("/api/worker/withdrawals",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(withdrawForm)});const result=await readJson(response);if(!response.ok)return alert(result.error);setWithdrawForm({...withdrawForm,amount:""});await load();alert("Withdrawal request জমা হয়েছে");}
   async function saveBank(){if(!confirm("একবার Save করলে আপনি নিজে Bank account পরিবর্তন করতে পারবেন না। নিশ্চিত?"))return;const response=await fetch("/api/worker/bank-account",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(bankForm)}),result=await readJson(response);if(!response.ok)return alert(result.error);await loadProfile();alert("Bank account নিরাপদভাবে Save হয়েছে");}
   async function openCustomer(id){const response=await fetch("/api/worker/customers/"+id),result=await readJson(response);if(!response.ok)return alert(result.error);setSelected(result);}
@@ -2663,7 +2625,8 @@ function WorkerDashboard({ startNew }) {
   const copyReferral=async()=>{await navigator.clipboard.writeText(referralLink);alert("Referral link copy হয়েছে");};
   if(!data)return <div className="loadingPage">Dashboard আসছে…</div>;
   const workerMenu=[["dashboard",Home,"Dashboard",true],["customers",ListChecks,"Customers",true],["transactions",Wallet,"Transactions",true],["targets",Target,"Targets",false],["referrals",UsersRound,"Referrals",false],["profile",UserRound,"Profile",true]];
-  return <div className={`portal workerPortal portalWithSidebar ${sidebarCollapsed?"sidebarCollapsed":""}`}><aside className="portalSidebar"><div className="sideBrand"><button aria-label="Sidebar hide or show" onClick={()=>setSidebarCollapsed(!sidebarCollapsed)}>{sidebarCollapsed?<Menu/>:<PanelLeftClose/>}</button><div><b>Worker Portal</b><small>Amjhupi Agent Banking</small></div></div><nav>{workerMenu.map(([id,Icon,label,mobile])=><button key={id} className={`${page===id?"active":""} ${mobile?"mobilePrimary":"desktopOnlyNav"}`} onClick={()=>setPage(id)}><Icon/><span>{label}</span></button>)}</nav></aside><main className="portalContent"><header className="portalTopbar"><button className="mobileMenuButton" onClick={()=>setSidebarCollapsed(!sidebarCollapsed)}><Menu/></button><div><b>{workerMenu.find(item=>item[0]===page)?.[2]||"Worker Portal"}</b><small>Amjhupi Agent Banking</small></div><button className="noticeButton" onClick={()=>setPage("notifications")}><Bell/>{announcements.length>0&&<span>{announcements.length}</span>}</button></header>
+  return <AppShell className="workerPortal" menu={workerMenu} active={page} onNavigate={setPage} title={workerMenu.find(item=>item[0]===page)?.[2] || "Worker Portal"} actions={<><button className="appIconButton noticeButton" aria-label="Notifications" onClick={()=>setPage("notifications")}><Bell/>{announcements.length>0&&<span>{announcements.length}</span>}</button>{actions}</>}>
+
     {page==="dashboard"&&<><div className="portalHero workerHero"><div><small>TEMPORARY WORKER</small><h1>আজকের কাজ এক নজরে</h1><p>Customer collection, correction এবং আপনার আয় সহজে দেখুন।</p></div><button className="primary" onClick={startNew}><Plus/> নতুন Customer</button></div><div className="metricGrid"><article><Database/><span>মোট জমা</span><b>{Object.values(data.counts||{}).reduce((a,b)=>a+b,0)}</b></article><article><RefreshCw/><span>Recollection</span><b>{data.counts.correction_required||0}</b></article><article><Wallet/><span>মোট আয়</span><b>{money(data.earned)}</b></article><article><ShieldCheck/><span>Available balance</span><b>{money(data.available)}</b></article></div>{data.notifications?.map(n=><div className="notification" key={n.id}><b>{n.title}</b><span>{n.message}</span></div>)}{data.targets?.length>0&&<section className="targetStrip"><Target/>{data.targets.map(t=><div key={t.id}><b>{t.name}</b><span>{Math.min(t.progress,t.required_count)}/{t.required_count} • Bonus {money(t.bonus_paisa)}</span><progress value={Math.min(t.progress,t.required_count)} max={t.required_count}/></div>)}</section>}<section className="quickActions"><button onClick={startNew}><Plus/><b>নতুন Customer</b><span>তথ্য সংগ্রহ শুরু করুন</span></button><button onClick={()=>setPage("customers")}><ListChecks/><b>Customer List</b><span>জমা ও correction দেখুন</span></button><button onClick={()=>setPage("transactions")}><Wallet/><b>Transactions</b><span>আয় ও withdrawal দেখুন</span></button></section></>}
     {page==="customers"&&<><div className="pageHeading"><div><small>MY COLLECTIONS</small><h1>Customer List</h1><p>আপনার জমা দেওয়া customer এবং বর্তমান status।</p></div><button className="primary" onClick={startNew}><Plus/> নতুন Customer</button></div><section className="portalPanel">{rows.length?<div className="portalTable">{rows.map(r=><article className="clickableRow" key={r.id} onClick={()=>openCustomer(r.id)}><div><b>{r.serial}</b><small>{new Date(r.createdAt).toLocaleDateString("en-GB")}</small></div><div><b>{r.name}</b><small>Nominee: {r.nominee||"—"}</small></div><div><b>{r.phone||"—"}</b><small>নিরাপত্তার জন্য masked</small></div><span className={`statusTag ${r.status}`}>{statusLabel[r.status]||r.status}</span>{r.correctionNote&&<p className="correctionNote">Admin note: {r.correctionNote}</p>}</article>)}</div>:<p className="empty">এখনো কোনো Customer জমা দেওয়া হয়নি</p>}</section></>}
     {page==="transactions"&&<><div className="pageHeading"><div><small>MONEY & REWARDS</small><h1>Transactions</h1><p>আপনার সব আয়, bonus ও withdrawal-এর হিসাব।</p></div></div><div className="metricGrid transactionMetrics"><article><Wallet/><span>Total Income</span><b>{money(data.earned)}</b></article><article><Download/><span>Total Withdraw</span><b>{money(data.withdrawn)}</b></article><article><ShieldCheck/><span>Balance</span><b>{money(data.available)}</b></article><article><Target/><span>Total Bonus</span><b>{money(data.bonus)}</b></article></div>{profile&&!profile.bankAccount.configured&&<section className="portalPanel bankSetup"><div className="panelTitle"><div><small>ONE-TIME SETUP</small><h2>City Bank Account যোগ করুন</h2></div><LockKeyhole/></div>{[["accountName","Account holder name"],["accountNumber","Account number"],["branch","Branch"]].map(([key,label])=><label key={key}><span>{label}</span><input value={bankForm[key]} onChange={e=>setBankForm({...bankForm,[key]:e.target.value})}/></label>)}<p className="secureNotice">Save করার পরে শুধু Admin account details পরিবর্তন করতে পারবেন।</p><button className="primary full" onClick={saveBank}>Confirm & Save Account</button></section>}{profile?.bankAccount.configured&&<section className="savedBank"><ShieldCheck/><div><small>SAVED CITY BANK ACCOUNT</small><h3>{profile.bankAccount.accountName}</h3><p>{profile.bankAccount.accountNumberMasked} • {profile.bankAccount.branch}</p></div><span>Locked</span></section>}<div className="portalColumns"><section className="portalPanel"><div className="panelTitle"><div><small>FULL LEDGER</small><h2>Transaction history</h2></div></div>{ledger.transactions.length?ledger.transactions.map(t=><p className="ledgerRow" key={t.id}><span>{t.reason}<small>{t.serial?`${t.serial} • ${t.customer_name} • `:""}{new Date(t.created_at).toLocaleDateString("en-GB")}</small></span><b>{t.amount_paisa>=0?"+":""}{money(t.amount_paisa)}</b></p>):<p className="empty">এখনো reward নেই</p>}{ledger.withdrawals.map(w=><p className="ledgerRow withdrawal" key={w.id}><span>Withdrawal #{w.id}<small>{w.status}</small></span><b>-{money(w.amount_paisa)}</b></p>)}</section><section className="portalPanel"><div className="panelTitle"><div><small>WITHDRAW</small><h2>টাকা তুলুন</h2></div></div><label><span>Amount (৳)</span><input inputMode="decimal" value={withdrawForm.amount} onChange={e=>setWithdrawForm({amount:e.target.value})}/></label><button className="primary full" disabled={!profile?.bankAccount.configured} onClick={withdraw}>Withdrawal Submit</button></section></div></>}
@@ -2672,7 +2635,7 @@ function WorkerDashboard({ startNew }) {
     {page==="referrals"&&<><div className="pageHeading"><div><small>MY NETWORK</small><h1>Referrals</h1><p>আপনার referral link, Worker এবং commission।</p></div></div>{profile&&<><div className="referralLinkCard"><div><span>Referral link</span><b>{referralLink}</b></div><button className="primary" onClick={copyReferral}>Copy Link</button></div><div className="referralSummary"><UsersRound/><div><span>Total referrals</span><b>{profile.referrals.length}</b></div><div><span>Total commission</span><b>{money(profile.referralIncome)}</b></div></div><section className="portalPanel referralList">{profile.referrals.length?profile.referrals.map(r=><article key={r.id}><div className="miniAvatar">{r.full_name?.[0]||"W"}</div><b>{r.full_name}</b><span>{money(r.income_paisa)}</span></article>):<p className="empty">এখনো referral নেই</p>}</section></>}</>}
     {page==="notifications"&&<><div className="pageHeading"><div><small>UPDATES</small><h1>Notifications</h1><p>Admin-এর গুরুত্বপূর্ণ announcement ও update।</p></div></div><section className="announcementGrid">{announcements.length?announcements.map(a=><article key={a.id}>{a.image_data&&<img src={a.image_data} alt=""/>}<div><small>{new Date(a.created_at).toLocaleDateString("en-GB")}</small><h2>{a.title}</h2><p>{a.description}</p></div></article>):<p className="empty portalPanel">কোনো announcement নেই</p>}</section></>}
     {page==="support"&&<><div className="pageHeading"><div><small>HELP CENTER</small><h1>Customer Service</h1><p>কাজের প্রয়োজনে Admin support-এর সাথে যোগাযোগ করুন।</p></div></div><section className="supportCard"><MessageCircle/><h2>WhatsApp Support</h2><p>Application, payment বা account সংক্রান্ত সাহায্যের জন্য WhatsApp-এ যোগাযোগ করুন।</p>{profile?.supportWhatsApp?<a className="primary" href={`https://wa.me/${profile.supportWhatsApp}`} target="_blank" rel="noreferrer">WhatsApp Chat খুলুন</a>:<span>Admin এখনো WhatsApp number সেট করেননি</span>}</section></>}
-    {page==="profile"&&profile&&<div className="profileSupport"><MessageCircle/><div><b>Customer Service</b><small>{profile.supportWhatsApp?"WhatsApp support available":"Admin এখনো number সেট করেননি"}</small></div>{profile.supportWhatsApp&&<a href={`https://wa.me/${profile.supportWhatsApp}`} target="_blank" rel="noreferrer">WhatsApp</a>}</div>}</main>{selected&&<WorkerDetailsModal data={selected} close={()=>setSelected(null)} refresh={load}/>} {showAnnouncement&&announcements[0]&&<div className="modalBackdrop"><section className="announcementModal">{announcements[0].image_data&&<img src={announcements[0].image_data} alt=""/>}<button className="modalClose" onClick={()=>setShowAnnouncement(false)}><X/></button><div><small>NEW ANNOUNCEMENT</small><h2>{announcements[0].title}</h2><p>{announcements[0].description}</p><button className="primary full" onClick={()=>{setShowAnnouncement(false);setPage("notifications")}}>বিস্তারিত দেখুন</button></div></section></div>}</div>;
+    {page==="profile"&&profile&&<div className="profileSupport"><MessageCircle/><div><b>Customer Service</b><small>{profile.supportWhatsApp?"WhatsApp support available":"Admin এখনো number সেট করেননি"}</small></div>{profile.supportWhatsApp&&<a href={`https://wa.me/${profile.supportWhatsApp}`} target="_blank" rel="noreferrer">WhatsApp</a>}</div>}{selected&&<WorkerDetailsModal data={selected} close={()=>setSelected(null)} refresh={load}/>} {showAnnouncement&&announcements[0]&&<div className="modalBackdrop"><section className="announcementModal">{announcements[0].image_data&&<img src={announcements[0].image_data} alt=""/>}<button className="modalClose" onClick={()=>setShowAnnouncement(false)}><X/></button><div><small>NEW ANNOUNCEMENT</small><h2>{announcements[0].title}</h2><p>{announcements[0].description}</p><button className="primary full" onClick={()=>{setShowAnnouncement(false);setPage("notifications")}}>বিস্তারিত দেখুন</button></div></section></div>}</AppShell>;
 }
 
 function AdminCaseModal({ data, close, reload }) {
@@ -2684,12 +2647,11 @@ function AdminCaseModal({ data, close, reload }) {
   return <div className="modalBackdrop adminPreviewBackdrop" onMouseDown={close}><section className="adminCaseModal" onMouseDown={e=>e.stopPropagation()}><button className="modalClose" onClick={close}><X/></button><div className="adminCaseHead"><div><small>FULL APPLICATION REVIEW</small><h1>{c.serial} — {caseData.name}</h1><p><b>TW:</b> {c.worker_name||c.created_by} • {c.worker_phone||'—'} • {c.created_by}</p></div><span className={'statusTag '+c.workflow_status}>{statusLabel[c.workflow_status]||c.workflow_status}</span></div><div className="adminReviewGrid"><div>{(caseData.people||[]).map((p,i)=><section className="reviewPerson" key={p.id||i}><h2>{i?'Nominee':'Applicant'}</h2><div className="reviewFields">{[["name","Name"],["nameBn","নাম"],["nid","NID / ID"],["dob","DOB"],["fatherNameEn","Father"],["motherNameEn","Mother"],["addressEn","Address English"],["addressBn","ঠিকানা"],["profession","Profession"]].map(([key,label])=><label key={key}><span>{label}</span><input value={p[key]||''} onChange={e=>updatePerson(i,key,e.target.value)}/></label>)}</div><div className="adminImageGrid">{[[p.idFront,'NID Front'],[p.idBack,'NID Back'],[p.birthCertificate,'Birth Certificate'],[p.photo,'Passport Photo']].filter(([src])=>src).map(([src,label])=><PreviewImage key={label} src={src} label={label} portrait={label==='Passport Photo'}/>)}</div></section>)}<section className="reviewPerson"><h2>Income Declaration</h2><label><span>Worker description</span><textarea value={caseData.declaration?.rawDescription||''} onChange={e=>setCaseData({...caseData,declaration:{...caseData.declaration,rawDescription:e.target.value}})}/></label><label><span>সাজানো Description</span><textarea value={caseData.declaration?.polishedDescription||''} onChange={e=>setCaseData({...caseData,declaration:{...caseData.declaration,polishedDescription:e.target.value}})}/></label><label><span>Monthly income</span><input value={caseData.declaration?.monthlyIncome||''} onChange={e=>setCaseData({...caseData,declaration:{...caseData.declaration,monthlyIncome:e.target.value}})}/></label></section><section className="reviewPerson"><h2>Signature ও Additional Documents</h2><div className="adminImageGrid">{(caseData.docs||[]).flatMap(d=>(d.pages||[]).map((src,i)=><PreviewImage key={(d.id||d.name)+i} src={src} label={(d.name||d.kind)+' '+(i+1)}/>))}</div></section></div><aside className="recollectionSelector"><h3>Recollection নির্বাচন</h3><p>শুধু নির্বাচিত item Worker আবার খুলতে পারবে।</p>{options.map(([value,label])=><label key={value}><input type="checkbox" checked={fields.includes(value)} onChange={e=>setFields(e.target.checked?[...fields,value]:fields.filter(v=>v!==value))}/><span>{label}</span></label>)}<button className="secondary full" onClick={recollect}><RefreshCw/> Recollection পাঠান</button><button className="primary full" disabled={saving} onClick={saveEdit}><Check/> Admin Edit Save</button><a className="recordDownload" href={'/api/customers/'+c.id+'/download'}><Download/> Full ZIP Download</a></aside></div></section></div>;
 }
 
-function AdminPortal({ openRecords }) {
-  const [tab,setTab]=useState('overview'),[adminCollapsed,setAdminCollapsed]=useState(()=>window.innerWidth<=700),[dashboard,setDashboard]=useState(null),[users,setUsers]=useState([]),[cases,setCases]=useState([]),[withdrawals,setWithdrawals]=useState([]),[targets,setTargets]=useState([]),[finance,setFinance]=useState({workers:[],transactions:[],settings:{}}),[announcements,setAnnouncements]=useState([]),[adminSettings,setAdminSettings]=useState({support_whatsapp:""}),[announcementForm,setAnnouncementForm]=useState({title:"",description:"",image:"",targetUserId:""}),[selectedCase,setSelectedCase]=useState(null),[selectedWorker,setSelectedWorker]=useState(null),[targetForm,setTargetForm]=useState({name:'',metric:'approved',requiredCount:'',bonus:'',startsAt:'',endsAt:'',userId:''});
+function AdminPortal({ openRecords, actions }) {
+  const [tab,setTab]=useState(()=>readPage("admin", "overview")),[dashboard,setDashboard]=useState(null),[users,setUsers]=useState([]),[cases,setCases]=useState([]),[withdrawals,setWithdrawals]=useState([]),[targets,setTargets]=useState([]),[finance,setFinance]=useState({workers:[],transactions:[],settings:{}}),[announcements,setAnnouncements]=useState([]),[adminSettings,setAdminSettings]=useState({support_whatsapp:""}),[announcementForm,setAnnouncementForm]=useState({title:"",description:"",image:"",targetUserId:""}),[selectedCase,setSelectedCase]=useState(null),[selectedWorker,setSelectedWorker]=useState(null),[targetForm,setTargetForm]=useState({name:'',metric:'approved',requiredCount:'',bonus:'',startsAt:'',endsAt:'',userId:''});
+  useEffect(() => { writePage("admin", tab); }, [tab]);
   const load=async()=>{const responses=await Promise.all([fetch('/api/admin/dashboard'),fetch('/api/admin/users'),fetch('/api/customers'),fetch('/api/admin/withdrawals'),fetch('/api/admin/targets'),fetch('/api/admin/finance'),fetch('/api/admin/announcements'),fetch('/api/admin/settings')]);const values=await Promise.all(responses.map(readJson));const failed=responses.findIndex((response)=>!response.ok);if(failed>=0)throw new Error(values[failed].error||`HTTP ${responses[failed].status}`);const [da,dbb,dc,dd,de,df,dg,dh]=values;setDashboard(da);setUsers(dbb.users||[]);setCases(dc.customers||[]);setWithdrawals(dd.withdrawals||[]);setTargets(de.targets||[]);setFinance(df);setAnnouncements(dg.announcements||[]);setAdminSettings(dh.settings||{})};
   useEffect(()=>{load().catch(e=>alert(e.message));},[]);
-  useEffect(()=>{const closeOnMobileClick=event=>{if(window.innerWidth>700)return;if(event.target.closest(".portalSidebar")||event.target.closest(".mobileMenuButton"))return;setAdminCollapsed(true);};document.addEventListener("click",closeOnMobileClick);return()=>document.removeEventListener("click",closeOnMobileClick);},[]);
-  useEffect(()=>{if(window.innerWidth<=700)setAdminCollapsed(true);},[tab]);
   async function userStatus(id,status){const reason=status==='rejected'?prompt('বাতিলের কারণ লিখুন')||'':'';const r=await fetch(`/api/admin/users/${id}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({status,reason})});const x=await r.json();if(!r.ok)return alert(x.error);load();}
   async function review(id,action){let accountNumber='',note='';if(action==='complete')accountNumber=prompt('City Bank account number লিখুন')||'';if(action==='correction'||action==='reject')note=prompt('Worker-এর জন্য কারণ/নির্দেশনা লিখুন')||'';const r=await fetch(`/api/admin/customers/${id}/review`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,accountNumber,note})});const x=await r.json();if(!r.ok)return alert(x.error);load();}
   async function bonus(id){const amount=prompt('Extra bonus amount (৳)');if(!amount)return;const reason=prompt('Bonus দেওয়ার কারণ');if(!reason)return;const r=await fetch(`/api/admin/customers/${id}/bonus`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({amount,reason})});const x=await r.json();if(!r.ok)return alert(x.error);load();}
@@ -2698,7 +2660,19 @@ function AdminPortal({ openRecords }) {
   async function openWorker(id){const r=await fetch('/api/admin/users/'+id+'/detail'),x=await r.json();if(!r.ok)return alert(x.error);setSelectedWorker(x.worker);}
   async function createTarget(){const r=await fetch('/api/admin/targets',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(targetForm)}),x=await r.json();if(!r.ok)return alert(x.error);setTargetForm({name:'',metric:'approved',requiredCount:'',bonus:'',startsAt:'',endsAt:'',userId:''});load();}
   async function toggleTarget(id){await fetch('/api/admin/targets/'+id,{method:'PUT'});load();}
-  async function adjust(worker){const amount=prompt(`${worker.full_name}-এর balance adjustment দিন। কমাতে negative amount দিন।`);if(!amount)return;const reason=prompt('Adjustment-এর কারণ লিখুন');if(!reason)return;const r=await fetch('/api/admin/finance/adjust',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:worker.id,amount,reason})}),x=await r.json();if(!r.ok)return alert(x.error);load();}
+  async function adjust(worker, direction) {
+    const input = prompt(`${worker.full_name}: ${direction === 'deduct' ? 'কত টাকা কমাবেন?' : 'কত টাকা যোগ করবেন?'}`);
+    if (input === null || !input.trim()) return;
+    const value = Number(input);
+    if (!Number.isFinite(value) || value <= 0 || Math.round(value * 100) === 0) return alert('শূন্যের বেশি সঠিক টাকার পরিমাণ দিন');
+    const amount = direction === 'deduct' ? -value : value;
+    const reason = prompt('Adjustment-এর কারণ লিখুন');
+    if (!reason?.trim()) return;
+    const r = await fetch('/api/admin/finance/adjust', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({userId:worker.id,amount,reason})});
+    const x = await r.json();
+    if (!r.ok) return alert(x.error);
+    load();
+  }
   async function rewardSettings(){const collection=prompt('Data approve reward (৳)',Number(finance.settings.collection_reward_paisa||5000)/100);if(collection===null)return;const completion=prompt('Account complete reward (৳)',Number(finance.settings.completion_reward_paisa||5000)/100);if(completion===null)return;const referral=prompt('Referral commission (%)',finance.settings.referral_percent||10);if(referral===null)return;const r=await fetch('/api/admin/reward-settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({collectionReward:collection,completionReward:completion,referralPercent:referral})}),x=await r.json();if(!r.ok)return alert(x.error);load();}
   async function saveWorker(){const payload={fullName:selectedWorker.full_name,phone:selectedWorker.phone,email:selectedWorker.email,address:selectedWorker.address,nidNumber:selectedWorker.nid_number,accountName:selectedWorker.payout_account_name,accountNumber:selectedWorker.payout_account_number,branch:selectedWorker.payout_branch};const r=await fetch('/api/admin/users/'+selectedWorker.id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}),x=await readJson(r);if(!r.ok)return alert(x.error);alert('Worker profile ও bank details Save হয়েছে');setSelectedWorker(null);load();}
   async function createAnnouncement(){const r=await fetch('/api/admin/announcements',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(announcementForm)}),x=await readJson(r);if(!r.ok)return alert(x.error);setAnnouncementForm({title:"",description:"",image:"",targetUserId:""});load();}
@@ -2707,16 +2681,16 @@ function AdminPortal({ openRecords }) {
   if(!dashboard)return <div className="loadingPage">Admin panel আসছে…</div>;
   if(tab==='users')return <div className="adminPortal usersOnly"><button className="secondary" onClick={()=>setTab('overview')}><ChevronLeft/> Admin Overview</button><AdminUserControl users={users} reload={load} master={true}/></div>;
   const adminMenu=[["overview",Home,"Overview"],["users",UsersRound,"Users"],["cases",Database,"Applications"],["finance",Wallet,"Finance"],["targets",Target,"Targets"],["payments",Download,"Withdrawals"],["announcements",Bell,"Announcements"],["settings",Settings,"Settings"]];
-  return <div className={`portal adminPortal portalWithSidebar ${adminCollapsed?"sidebarCollapsed":""}`}><aside className="portalSidebar adminSidebar"><div className="sideBrand"><button aria-label="Sidebar hide or show" onClick={()=>setAdminCollapsed(!adminCollapsed)}>{adminCollapsed?<Menu/>:<PanelLeftClose/>}</button><div><b>Admin Portal</b><small>Control Center</small></div></div><nav>{adminMenu.map(([id,Icon,label])=><button key={id} className={tab===id?'active':''} onClick={()=>setTab(id)}><Icon/><span>{label}</span></button>)}</nav><button className="sideFiles" onClick={openRecords}><Database/> Customer Files</button></aside><main className="portalContent"><header className="portalTopbar"><button className="mobileMenuButton" onClick={()=>setAdminCollapsed(!adminCollapsed)}><Menu/></button><div><b>{adminMenu.find(item=>item[0]===tab)?.[2]}</b><small>Admin Control Center</small></div><button className="noticeButton" onClick={()=>setTab("announcements")}><Bell/>{announcements.filter(a=>a.active).length>0&&<span>{announcements.filter(a=>a.active).length}</span>}</button></header><div className="portalHero adminHero compactHero"><div><small>AMJHUPI CITY AGENT BANK</small><h1>{adminMenu.find(item=>item[0]===tab)?.[2]}</h1><p>সম্পূর্ণ control, review এবং management আপনার হাতে।</p></div></div>
+  return <AppShell className="adminPortal" menu={adminMenu} active={tab} onNavigate={setTab} title={adminMenu.find(item=>item[0]===tab)?.[2] || "Admin Portal"} footer={<button onClick={openRecords}><Database/> Customer Files</button>} actions={<><button className="appIconButton noticeButton" aria-label="Notifications" onClick={()=>setTab("announcements")}><Bell/>{announcements.filter(a=>a.active).length>0&&<span>{announcements.filter(a=>a.active).length}</span>}</button>{actions}</>}><div className="portalHero adminHero compactHero"><div><small>AMJHUPI CITY AGENT BANK</small><h1>{adminMenu.find(item=>item[0]===tab)?.[2]}</h1><p>সম্পূর্ণ control, review এবং management আপনার হাতে।</p></div></div>
     {tab==='overview'&&<><div className="metricGrid"><article><Clock3/><span>Worker approval অপেক্ষায়</span><b>{dashboard.users.pending||0}</b></article><article><Database/><span>নতুন Application</span><b>{dashboard.cases.submitted||0}</b></article><article><Check/><span>Account completed</span><b>{dashboard.cases.completed||0}</b></article><article><Wallet/><span>মোট Reward</span><b>{money(dashboard.totalRewards)}</b></article></div><section className="portalPanel"><h2>আজকের কাজ</h2><p className="empty">Pending worker approve করুন, submitted customer file যাচাই করুন, তারপর account complete হলে account number দিন।</p></section></>}
     {tab==='workers'&&<section className="portalPanel"><div className="panelTitle"><div><small>WORKER MANAGEMENT</small><h2>Registration ও Approval</h2></div></div><div className="portalTable">{users.map(u=><article key={u.id}><div><b>{u.full_name}</b><small>@{u.username}</small></div><div><b>{u.phone}</b><small>{u.email||'No email'}</small></div><div><b>{u.address||'—'}</b><small>Registration address</small></div><span className={`statusTag ${u.status}`}>{statusLabel[u.status]||u.status}</span><div className="rowActions"><button onClick={()=>openWorker(u.id)}>A–Z Preview</button>{u.status!=='approved'&&<button onClick={()=>userStatus(u.id,'approved')}>Approve</button>}{u.status!=='suspended'&&<button onClick={()=>userStatus(u.id,'suspended')}>Lock</button>}<button className="danger" onClick={()=>userStatus(u.id,'rejected')}>Reject</button></div></article>)}</div></section>}
     {tab==='cases'&&<section className="portalPanel"><div className="panelTitle"><div><small>APPLICATION REVIEW</small><h2>Customer submissions</h2></div></div><div className="portalTable applications">{cases.map(c=><article key={c.id}><div><b>{c.serial}</b><small>TW: {c.created_by}</small></div><div><b>{c.name}</b><small>{c.phone||'—'}</small></div><span className={`statusTag ${c.workflow_status}`}>{statusLabel[c.workflow_status]||c.workflow_status}</span><div className="rowActions"><button onClick={()=>openCase(c.id)}>A–Z Preview & Edit</button><button onClick={()=>review(c.id,'approve')}>Approve +৳50</button><button onClick={()=>review(c.id,'processing')}>Bank Processing</button><button onClick={()=>review(c.id,'complete')}>Complete +৳50</button><button onClick={()=>bonus(c.id)}>Bonus</button></div></article>)}</div></section>}
-    {tab==='finance'&&<><section className="portalPanel"><div className="panelTitle"><div><small>REWARD CONTROL</small><h2>Income, Commission ও Balance</h2></div><button className="secondary" onClick={rewardSettings}><Settings/> Reward rates পরিবর্তন</button></div><div className="metricGrid financeRates"><article><Database/><span>Data approve reward</span><b>{money(finance.settings.collection_reward_paisa)}</b></article><article><Check/><span>Completion reward</span><b>{money(finance.settings.completion_reward_paisa)}</b></article><article><UsersRound/><span>Referral commission</span><b>{finance.settings.referral_percent||10}%</b></article><article><Wallet/><span>Total paid ledger</span><b>{money(dashboard.totalRewards)}</b></article></div><div className="financeWorkerTable">{finance.workers.map(w=><article key={w.id}><div><b>{w.full_name}</b><small>@{w.username} • {w.phone}</small></div><p><span>Total income</span><b>{money(w.total_income)}</b></p><p><span>Referral</span><b>{money(w.referral_income)}</b></p><p><span>Bonus</span><b>{money(w.bonus+w.target_bonus)}</b></p><p><span>Withdraw</span><b>{money(w.withdrawn)}</b></p><p><span>Balance</span><b>{money(w.balance)}</b></p><button onClick={()=>adjust(w)}>Add / Deduct</button></article>)}</div></section><section className="portalPanel"><div className="panelTitle"><div><small>ALL TRANSACTIONS</small><h2>সম্পূর্ণ Income Ledger</h2></div></div>{finance.transactions.map(t=><p className="ledgerRow" key={t.id}><span><b>{t.full_name}</b> — {t.reason}<small>{t.serial?`${t.serial} • ${t.customer_name}`:'General'} • {new Date(t.created_at).toLocaleDateString('en-GB')}</small></span><b>{t.amount_paisa>=0?'+':''}{money(t.amount_paisa)}</b></p>)}</section></>}
+    {tab==='finance'&&<><section className="portalPanel"><div className="panelTitle"><div><small>REWARD CONTROL</small><h2>Income, Commission ও Balance</h2></div><button className="secondary" onClick={rewardSettings}><Settings/> Reward rates পরিবর্তন</button></div><div className="metricGrid financeRates"><article><Database/><span>Data approve reward</span><b>{money(finance.settings.collection_reward_paisa)}</b></article><article><Check/><span>Completion reward</span><b>{money(finance.settings.completion_reward_paisa)}</b></article><article><UsersRound/><span>Referral commission</span><b>{finance.settings.referral_percent||10}%</b></article><article><Wallet/><span>Total paid ledger</span><b>{money(dashboard.totalRewards)}</b></article></div><div className="financeWorkerTable">{finance.workers.map(w=><article key={w.id}><div><b>{w.full_name}</b><small>@{w.username} • {w.phone}</small></div><p><span>Total income</span><b>{money(w.total_income)}</b></p><p><span>Referral</span><b>{money(w.referral_income)}</b></p><p><span>Bonus</span><b>{money(w.bonus+w.target_bonus)}</b></p><p><span>Withdraw</span><b>{money(w.withdrawn)}</b></p><p><span>Balance</span><b>{money(w.balance)}</b></p><button onClick={()=>adjust(w,"add")}>ব্যালেন্স যোগ</button><button onClick={()=>adjust(w,"deduct")}>ব্যালেন্স কমান</button></article>)}</div></section><section className="portalPanel"><div className="panelTitle"><div><small>ALL TRANSACTIONS</small><h2>সম্পূর্ণ Income Ledger</h2></div></div>{finance.transactions.map(t=><p className="ledgerRow" key={t.id}><span><b>{t.full_name}</b> — {t.reason}<small>{t.serial?`${t.serial} • ${t.customer_name}`:'General'} • {new Date(t.created_at).toLocaleDateString('en-GB')}</small></span><b>{t.amount_paisa>=0?'+':''}{money(t.amount_paisa)}</b></p>)}</section></>}
     {tab==='targets'&&<><section className="portalPanel targetForm"><div className="panelTitle"><div><small>AUTOMATIC BONUS</small><h2>নতুন Target তৈরি করুন</h2></div></div>{[["name","Target name"],["requiredCount","Required count"],["bonus","Bonus amount (৳)"],["startsAt","Start date/time"],["endsAt","End date/time"]].map(([key,label])=><label key={key}><span>{label}</span><input type={key.includes('At')?'datetime-local':'text'} value={targetForm[key]} onChange={e=>setTargetForm({...targetForm,[key]:e.target.value})}/></label>)}<label><span>Metric</span><select value={targetForm.metric} onChange={e=>setTargetForm({...targetForm,metric:e.target.value})}><option value="approved">Data approved</option><option value="completed">Account completed</option></select></label><label><span>Worker</span><select value={targetForm.userId} onChange={e=>setTargetForm({...targetForm,userId:e.target.value})}><option value="">সব Worker</option>{users.map(u=><option value={u.id}>{u.full_name}</option>)}</select></label><button className="primary" onClick={createTarget}>Target Save</button></section><section className="portalPanel">{targets.map(t=><p className="ledgerRow"><span><b>{t.name}</b><small>{t.metric} • {t.required_count}টি • {t.worker_name||'সব Worker'}</small></span><b>{money(t.bonus_paisa)} <button onClick={()=>toggleTarget(t.id)}>{t.active?'Active':'Inactive'}</button></b></p>)}</section></>}
     {tab==='payments'&&<section className="portalPanel"><div className="panelTitle"><div><small>WITHDRAWAL CONTROL</small><h2>Worker payout requests</h2></div></div><div className="portalTable">{withdrawals.map(w=><article key={w.id}><div><b>{w.full_name}</b><small>{w.phone} • @{w.username}</small></div><div><b>{money(w.amount_paisa)}</b><small>{w.account_number} • {w.branch}</small></div><span className={`statusTag ${w.status}`}>{w.status}</span><div className="rowActions">{w.status==='requested'&&<button onClick={()=>withdrawal(w.id,'approved')}>Approve</button>}{!['paid','rejected'].includes(w.status)&&<><button onClick={()=>withdrawal(w.id,'paid')}>Paid</button><button className="danger" onClick={()=>withdrawal(w.id,'rejected')}>Reject</button></>}</div></article>)}</div></section>}
     {tab==='announcements'&&<><section className="portalPanel announcementComposer"><div className="panelTitle"><div><small>APP OPEN NOTICE</small><h2>Notification তৈরি করুন</h2></div></div><label><span>Title</span><input value={announcementForm.title} onChange={e=>setAnnouncementForm({...announcementForm,title:e.target.value})}/></label><label><span>Description</span><textarea value={announcementForm.description} onChange={e=>setAnnouncementForm({...announcementForm,description:e.target.value})}/></label><label><span>কাদের জন্য</span><select value={announcementForm.targetUserId} onChange={e=>setAnnouncementForm({...announcementForm,targetUserId:e.target.value})}><option value="">সব Worker</option>{users.map(u=><option key={u.id} value={u.id}>{u.full_name}</option>)}</select></label><RegistrationImage label="Optional banner image" value={announcementForm.image} onChange={image=>setAnnouncementForm({...announcementForm,image})}/><button className="primary" onClick={createAnnouncement}><Bell/> Publish Notification</button></section><section className="announcementAdminList">{announcements.map(a=><article key={a.id}>{a.image_data&&<img src={a.image_data} alt=""/>}<div><small>{a.target_name||'সব Worker'} • {new Date(a.created_at).toLocaleDateString('en-GB')}</small><h3>{a.title}</h3><p>{a.description}</p></div><button onClick={()=>toggleAnnouncement(a.id)}>{a.active?'Active':'Inactive'}</button></article>)}</section></>}
     {tab==='settings'&&<><section className="portalPanel settingsPage"><div className="panelTitle"><div><small>SUPPORT CHANNEL</small><h2>Customer Service WhatsApp</h2></div></div><label><span>WhatsApp number (country code সহ)</span><input value={adminSettings.support_whatsapp||''} onChange={e=>setAdminSettings({...adminSettings,support_whatsapp:e.target.value})} placeholder="8801XXXXXXXXX"/></label><button className="primary" onClick={saveSupport}><MessageCircle/> Save Support Number</button></section><section className="portalPanel"><h2>System Control</h2><p className="empty">Reward rates Finance page থেকে এবং Worker bank information Worker profile থেকে পরিবর্তন করুন। প্রতিটি পরিবর্তন activity log-এ সংরক্ষিত হয়।</p></section></>}
-    </main>{selectedCase&&<AdminCaseModal data={selectedCase} close={()=>setSelectedCase(null)} reload={load}/>} {selectedWorker&&<div className="modalBackdrop" onMouseDown={()=>setSelectedWorker(null)}><section className="settingsModal workerFullPreview" onMouseDown={e=>e.stopPropagation()}><button className="modalClose" onClick={()=>setSelectedWorker(null)}><X/></button><small>WORKER FULL CONTROL</small><h2>{selectedWorker.full_name}</h2><div className="adminWorkerForm">{[["full_name","Full name"],["nid_number","NID number"],["phone","Mobile"],["email","Email"],["address","Address"],["payout_account_name","Bank account name"],["payout_account_number","Bank account number"],["payout_branch","Branch"]].map(([key,label])=><label key={key}><span>{label}</span><input value={selectedWorker[key]||''} onChange={e=>setSelectedWorker({...selectedWorker,[key]:e.target.value})}/></label>)}</div><div className="adminImageGrid">{Object.entries(selectedWorker.images||{}).map(([key,src])=><PreviewImage key={key} src={src} label={key}/>)}</div><button className="primary full" onClick={saveWorker}><Check/> সব পরিবর্তন Save করুন</button></section></div>}</div>;
+    {selectedCase&&<AdminCaseModal data={selectedCase} close={()=>setSelectedCase(null)} reload={load}/>} {selectedWorker&&<div className="modalBackdrop" onMouseDown={()=>setSelectedWorker(null)}><section className="settingsModal workerFullPreview" onMouseDown={e=>e.stopPropagation()}><button className="modalClose" onClick={()=>setSelectedWorker(null)}><X/></button><small>WORKER FULL CONTROL</small><h2>{selectedWorker.full_name}</h2><div className="adminWorkerForm">{[["full_name","Full name"],["nid_number","NID number"],["phone","Mobile"],["email","Email"],["address","Address"],["payout_account_name","Bank account name"],["payout_account_number","Bank account number"],["payout_branch","Branch"]].map(([key,label])=><label key={key}><span>{label}</span><input value={selectedWorker[key]||''} onChange={e=>setSelectedWorker({...selectedWorker,[key]:e.target.value})}/></label>)}</div><div className="adminImageGrid">{Object.entries(selectedWorker.images||{}).map(([key,src])=><PreviewImage key={key} src={src} label={key}/>)}</div><button className="primary full" onClick={saveWorker}><Check/> সব পরিবর্তন Save করুন</button></section></div>}</AppShell>;
 }
 
 function WorkerFinalPreview({ name,details,people,declaration,onBack,onSave,saving }) {
@@ -2763,7 +2737,9 @@ function App() {
     [customerConsent, setCustomerConsent] = useState(false),
     [draftSavedAt, setDraftSavedAt] = useState(""),
     [showSettings, setShowSettings] = useState(false);
-  const draftLoaded = useRef(false);
+  const [draftReady, setDraftReady] = useState(false);
+  const [confirmClear,setConfirmClear] = useState(false);
+  const draftOwner = useRef(null);
   useEffect(() => { setPhotoPrintPreview(""); }, [people]);
   useEffect(() => {
     fetch("/api/auth/status")
@@ -2780,70 +2756,57 @@ function App() {
       });
   }, [auth?.authenticated]);
   useEffect(() => {
-    if (!auth?.authenticated || draftLoaded.current || true) return;
-    draftLoaded.current = true;
+    if (!auth?.authenticated) return;
+    let cancelled = false;
+    draftOwner.current = auth.username;
+    setDraftReady(false);
+    readDraft(auth.username).then(draft => {
+      if (cancelled) return;
+      if (draft) {
+        setName(draft.name || ""); setDetails(draft.details || {});
+        setPeople((draft.people || [person()]).map(p => ({...person(p.role), ...p, busy:false, ocrStatus:""})));
+        setDocs(draft.docs || []); setPhotoPrintLayout(draft.photoPrintLayout || {width:35,height:45,positions:{}});
+        setDeclaration(current => ({...current,...draft.declaration,busy:false}));
+        setEditingCustomerId(draft.editingCustomerId || null); setCustomerConsent(!!draft.customerConsent);
+        setSavedSerial(draft.savedSerial || ""); setSavedCustomerId(draft.savedCustomerId || null);
+        setDraftSavedAt("আগের Draft ফিরে এসেছে");
+      }
+      const requested = Number(readPage("page", draft?.step ?? (isAdminRole(auth.role) ? 6 : 0)));
+      setStep([0,1,2,3,4,5,6].includes(requested) && (isAdminRole(auth.role) || ![5,6].includes(requested)) ? requested : (isAdminRole(auth.role) ? 6 : 0));
+      setDraftReady(true);
+    }).catch(() => { if (!cancelled) { setDraftSavedAt("Draft storage খুলতে পারেনি—browser storage পরীক্ষা করুন"); setDraftReady(true); } });
+    return () => { cancelled = true; };
+  }, [auth?.authenticated, auth?.username]);
+  useEffect(() => {
+    if (!auth?.authenticated || !draftReady || draftOwner.current !== auth.username) return;
+    writePage("page", step);
+    setDraftSavedAt("Draft সংরক্ষণ হচ্ছে…");
+    saveDraft(auth.username, {name,details,people,docs,declaration:{...declaration,busy:false},photoPrintLayout,editingCustomerId,customerConsent,step,savedSerial,savedCustomerId,savedAt:Date.now()})
+      .then(() => setDraftSavedAt("ছবি ও তথ্য এই ডিভাইসে সংরক্ষিত"))
+      .catch(() => setDraftSavedAt("Draft save হয়নি—ডিভাইসের storage খালি করুন; এখনই বন্ধ করবেন না"));
+  }, [auth?.authenticated,auth?.username,draftReady,step,name,details,people,docs,declaration,photoPrintLayout,editingCustomerId,customerConsent,savedSerial,savedCustomerId]);
+  useEffect(() => {
+    window.documentStudioBeforeReload = flushDraft;
+    return () => { delete window.documentStudioBeforeReload; };
+  }, []);
+  useEffect(() => {
+    const ready = !!auth && (!auth.authenticated || draftReady);
+    window.documentStudioReady = ready;
+    if (ready && /DocumentStudioAndroid/.test(navigator.userAgent)) location.href = "documentstudio://ready";
+  }, [auth,draftReady]);
+  async function clearCurrentDraft() {
+    setConfirmClear(false);
     try {
-      const draft = JSON.parse(
-        localStorage.getItem("documentStudioDraft") || "null",
-      );
-      if (draft?.savedAt && Date.now() - draft.savedAt < 7 * 86400000) {
-        setName(draft.name || "");
-        setDetails(draft.details || details);
-        setPeople(
-          (draft.people || [person()]).map((p) => ({
-            ...person(p.role),
-            ...p,
-          })),
-        );
-        setDocs(draft.docs || []);
-        setPhotoPrintLayout(draft.photoPrintLayout || {width:35,height:45,positions:{}});
-        setDeclaration((current) => ({
-          ...current,
-          ...(draft.declaration || {}),
-        }));
-        setEditingCustomerId(draft.editingCustomerId || null);
-        setDraftSavedAt("Draft restored");
-        setStep(2);
-      }
-    } catch {}
-  }, [auth?.authenticated]);
+      await deleteDraft(auth.username);
+      setName(""); setDetails({customerId:"",nameBn:"",email:"",phone:"",addressBn:"",addressEn:""});
+      setPeople([person()]); setDocs([]); setDeclaration({customerName:"",fatherName:"",motherName:"",address:"",postOffice:"",thana:"",district:"",rawDescription:"",polishedDescription:"",monthlyIncome:"",accountNumber:"",busy:false});
+      setPhotoPrintLayout({width:35,height:45,positions:{}}); setPhotoPrintPreview("");
+      setDeclarationJpg("");setDeclarationPdfPreview("");setIdPdfPreviews({});setEditingCustomerId(null);setCustomerConsent(false);setSavedSerial("");setSavedCustomerId(null);setStep(1);
+    } catch { alert("Draft clear হয়নি। আবার চেষ্টা করুন।"); }
+  }
   useEffect(() => {
-    if (!auth?.authenticated || step < 2 || step > 3 || true) return;
-    const timer = setTimeout(() => {
-      try {
-        localStorage.setItem(
-          "documentStudioDraft",
-          JSON.stringify({
-            name,
-            details,
-            people,
-            docs,
-            declaration,
-            photoPrintLayout,
-            editingCustomerId,
-            savedAt: Date.now(),
-          }),
-        );
-        setDraftSavedAt("Draft auto-saved");
-      } catch {
-        setDraftSavedAt("Draft বড় হওয়ায় শুধু বর্তমান screen-এ আছে");
-      }
-    }, 700);
-    return () => clearTimeout(timer);
-  }, [
-    auth?.authenticated,
-    step,
-    name,
-    details,
-    people,
-    docs,
-    declaration,
-    photoPrintLayout,
-    editingCustomerId,
-  ]);
-  useEffect(() => {
-    if (auth?.authenticated && auth.role === "worker") setStep(0);
-  }, [auth?.authenticated, auth?.role]);
+    if (draftReady && step === 3 && isAdminRole(auth?.role) && !Object.keys(idPdfPreviews).length) openPreview();
+  }, [draftReady]);
   const progress = useMemo(() => {
     let total =
         people.length * 4 +
@@ -2950,7 +2913,7 @@ function App() {
     a.click();
     a.remove();
   }
-  if (!auth)
+  if (!auth || (auth.authenticated && !draftReady))
     return <div className="loadingPage">Document Studio চালু হচ্ছে…</div>;
   if (!auth.authenticated)
     return (
@@ -2963,8 +2926,9 @@ function App() {
       />
     );
   async function logout() {
+    await flushDraft();
     await fetch("/api/auth/logout", { method: "POST" });
-    setAuth({ setupRequired: false, authenticated: false, username: "" });
+    location.reload();
   }
   function editSavedCase(caseData, customerId) {
     setName(caseData.name || "");
@@ -2987,53 +2951,29 @@ function App() {
     setEditingCustomerId(customerId);
     setStep(2);
   }
+  const actions = <>
+    {[1,2,3].includes(step) && <button className="appIconButton" aria-label="Clear current draft" title="Clear all draft data" onClick={()=>setConfirmClear(true)}><Trash2/></button> }
+    {isAdminRole(auth.role) && <button className="appIconButton" aria-label="AI Settings" title="AI Settings" onClick={() => setShowSettings(true)}><Settings/></button>}
+    <button className="appIconButton" onClick={logout} aria-label="Logout" title={`${auth.username} — Logout`}><LogOut/></button>
+  </>;
+  const inPortal = step === 0 || step === 6;
+  const PageFrame = inPortal ? React.Fragment : AppShell;
+  const frameProps = inPortal ? {} : {
+    title: step === 5 ? "Customer Files" : "Document Collection",
+    actions,
+    active: step === 5 ? 5 : 1,
+    menu: [[isAdminRole(auth.role) ? 6 : 0, Home, "Dashboard"], [1, Plus, "New Customer"], ...(isAdminRole(auth.role) ? [[5, Database, "Customer Files"]] : [])],
+    onNavigate: setStep,
+  };
   return (
-    <>
-      <header>
-        <div className="brand">
-          <img className="cityLogo" src="/city-bank-logo.png" alt="City Bank" />
-          <div>
-            <b>Amjhupi Agent Banking</b>
-            <small>DOCUMENT COLLECTION SYSTEM</small>
-          </div>
-        </div>
-        <div className="headerActions">
-          {isAdminRole(auth.role) && <button className="settingsButton" onClick={() => setStep(6)}>
-            <ShieldCheck /> Admin
-          </button>}
-          {isAdminRole(auth.role) && <button className="settingsButton" onClick={() => setStep(5)}>
-            <Database /> Records
-          </button>}
-          {auth.role === "worker" && <button className="settingsButton" onClick={() => setStep(0)}><Database /> Dashboard</button>}
-          {isAdminRole(auth.role) && <button
-            className="settingsButton"
-            onClick={() => setShowSettings(true)}
-          >
-            <Settings /> AI Settings
-            <i
-              className={
-                localStorage.getItem("documentStudioGeminiKey") ||
-                localStorage.getItem("documentStudioGoogleVisionKey")
-                  ? "connected"
-                  : ""
-              }
-            />
-          </button>}
-          <button
-            className="logoutButton"
-            onClick={logout}
-            title={`${auth.username} — Logout`}
-          >
-            <LogOut />
-          </button>
-        </div>
-      </header>
+    <PageFrame {...frameProps}>
+      {confirmClear && <div className="modalBackdrop"><section className="settingsModal" role="dialog" aria-modal="true" aria-label="Clear draft confirmation"><h2>চলমান Draft Clear করবেন?</h2><p>সব scan, ছবি ও অসম্পূর্ণ details মুছে যাবে। Server-এ জমা দেওয়া ফাইল থাকবে।</p><button className="primary" onClick={clearCurrentDraft}>Clear all draft data</button><button className="secondary" onClick={()=>setConfirmClear(false)}>Cancel</button></section></div>}
       {isAdminRole(auth.role) && <ApiSettings open={showSettings} onClose={() => setShowSettings(false)} />}
-      <main>
+      <div className="appPageContents">
         {step === 0 ? (
-          <WorkerDashboard startNew={() => setStep(1)} />
+          <WorkerDashboard startNew={() => setStep(1)} actions={actions} />
         ) : step === 6 ? (
-          <AdminPortal openRecords={() => setStep(5)} />
+          <AdminPortal openRecords={() => setStep(5)} actions={actions} />
         ) : step === 5 ? (
           <Records onBack={() => setStep(1)} onEditCase={editSavedCase} />
         ) : step === 1 ? (
@@ -3273,7 +3213,7 @@ function App() {
                   <span>সম্পন্ন</span>
                   <b>{progress}%</b>
                 </p>
-                <small className="draftStatus"><Clock3 size={14} /> Save না করলে Reload-এ তথ্য reset হবে</small>
+                <small className="draftStatus"><Clock3 size={14} /> {draftSavedAt}</small>
                 <hr />
                 <ul>
                   <li>Applicant/Nominee ID: JPG + PDF</li>
@@ -3630,8 +3570,8 @@ function App() {
             </button>
           </div>
         )}
-      </main>
-    </>
+      </div>
+    </PageFrame>
   );
 }
 createRoot(document.getElementById("root")).render(<App />);

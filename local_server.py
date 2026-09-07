@@ -1,25 +1,32 @@
 import base64, hashlib, hmac, io, json, mimetypes, os, re, secrets, sqlite3, zipfile
 import urllib.error, urllib.request
 import worker_system
+import customer_assets
 from datetime import datetime, timedelta, timezone
 from http.cookies import SimpleCookie
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse, quote
+from contextlib import contextmanager
 
 ROOT = Path(__file__).resolve().parent
-APP_DIR, DATA_DIR = ROOT / "app", ROOT / "data"
+APP_DIR, DATA_DIR = ROOT / "app", Path(os.environ.get("DATA_DIR", str(ROOT / "data"))).resolve()
 ARCHIVE_DIR, DB_PATH = DATA_DIR / "customers", DATA_DIR / "document_studio.db"
 APP_DIR = ROOT / "dist" / "client"
 PORT = int(os.environ.get("PORT", "8765"))
 SESSION_DAYS = 30
 
+@contextmanager
 def db():
     connection = sqlite3.connect(DB_PATH, timeout=20)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA busy_timeout=30000")
     connection.execute("PRAGMA foreign_keys=ON")
-    return connection
+    try:
+        with connection:
+            yield connection
+    finally:
+        connection.close()
 
 def initialize():
     ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
@@ -41,6 +48,7 @@ def initialize():
         con.execute("CREATE INDEX IF NOT EXISTS idx_customers_number ON customers(customer_number)")
         con.execute("CREATE INDEX IF NOT EXISTS idx_customers_phone ON customers(phone)")
         worker_system.initialize(con, DATA_DIR)
+        customer_assets.initialize(con)
         con.execute("PRAGMA optimize")
 
 def digest(password, salt):
@@ -94,9 +102,8 @@ class Handler(SimpleHTTPRequestHandler):
         if not token: return None
         now = datetime.now(timezone.utc).isoformat()
         with db() as con:
-            con.execute("DELETE FROM sessions WHERE expires_at<=?", (now,))
             row = con.execute("""SELECT u.* FROM sessions s JOIN users u ON u.username=s.username
-                WHERE s.token=?""", (token,)).fetchone()
+                WHERE s.token=? AND s.expires_at>?""", (token, now)).fetchone()
         return row
 
     def user(self):
@@ -118,6 +125,8 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         route = urlparse(self.path)
+        handled = customer_assets.dispatch(self, "GET", route.path, db, ARCHIVE_DIR)
+        if handled is not False: return handled
         if route.path == "/api/auth/status":
             with db() as con: setup = con.execute("SELECT 1 FROM users LIMIT 1").fetchone() is None
             user = self.current_user()
@@ -137,8 +146,8 @@ class Handler(SimpleHTTPRequestHandler):
                     OR json_extract(CASE WHEN json_valid(case_json) THEN case_json ELSE '{}' END,
                                     '$.people[0].nid') LIKE ?)
                     ORDER BY id DESC LIMIT 100""",
-                    (current["role"], current["username"], query, pattern, pattern, pattern, pattern, pattern, pattern, pattern)).fetchall()
-            if current["role"] != "admin":
+                    ("admin" if self.is_admin() else "worker", current["username"], query, pattern, pattern, pattern, pattern, pattern, pattern, pattern)).fetchall()
+            if not self.is_admin():
                 return self.reply(200, {"customers": [{"id": r["id"], "serial": r["serial"], "name": r["name"],
                     "name_bn": r["name_bn"], "customer_number": "••••" + r["customer_number"][-4:] if r["customer_number"] else "",
                     "phone": "••••••" + r["phone"][-4:] if r["phone"] else "", "email": "", "created_at": r["created_at"],
@@ -152,7 +161,7 @@ class Handler(SimpleHTTPRequestHandler):
             if not self.is_admin(): return self.reply(403, {"error": "শুধু Admin file download করতে পারবেন"})
             try: customer_id = int(route.path.split("/")[3])
             except (ValueError, IndexError): return self.reply(400, {"error": "Invalid customer"})
-            with db() as con: row = con.execute("SELECT archive_name,archive_path,name,phone,case_json FROM customers WHERE id=?", (customer_id,)).fetchone()
+            with db() as con: row = con.execute("SELECT id,archive_name,archive_path,name,phone,case_json FROM customers WHERE id=?", (customer_id,)).fetchone()
             if not row: return self.reply(404, {"error": "Customer file পাওয়া যায়নি"})
             path = Path(row["archive_path"])
             if not path.is_file() or path.parent.resolve() != ARCHIVE_DIR.resolve():
@@ -188,6 +197,8 @@ class Handler(SimpleHTTPRequestHandler):
                 if not writer.pages: return self.reply(400, {"error": "পুরোনো file PDF-এ convert করা যায়নি"})
                 merged = io.BytesIO(); writer.write(merged); content = merged.getvalue()
                 download_name = f"{safe(row['name'])}_{safe(row['phone'] or 'NO-MOBILE')}.pdf"
+            if download_name.lower().endswith(".zip"):
+                content = customer_assets.updated_archive(content, row, db)
             ascii_name = download_name.encode("ascii", "ignore").decode() or "CUSTOMER_DOCUMENT.pdf"
             self.send_response(200)
             self.send_header("Content-Type", "application/zip" if download_name.lower().endswith(".zip") else "application/pdf")
@@ -218,6 +229,8 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         route = urlparse(self.path).path
+        handled = customer_assets.dispatch(self, "POST", route, db, ARCHIVE_DIR)
+        if handled is not False: return handled
         if route == "/api/auth/setup": return self.auth_setup()
         if route == "/api/auth/login": return self.login()
         if route == "/api/auth/logout":
@@ -563,7 +576,7 @@ Identity preservation takes priority over beautification or pose correction."""
             images = data.get("images", [])
             if not api_key or not isinstance(images, list) or not images:
                 raise ValueError("Gemini API key বা ID image পাওয়া যায়নি")
-            parts = [{"text": """Read these front and back images of one Bangladesh ID card. Return only verified details visible on the card. Copy the card holder's Bangla father and mother names into fatherNameBn and motherNameBn when visible. Put their exact English/transliterated uppercase versions into fatherNameEn and motherNameEn. Never guess an unreadable name. Copy names exactly; keep internal spaces and uppercase all English names. NID must be digits only.
+            parts = [{"text": """Read these front and back images of one Bangladesh ID card. Extract issueDate and issuePlace only when explicitly printed. Separately copy village, postOffice, postCode, thana and district exactly as visible; use empty strings for missing values. Do not infer issue place from the address. Return only verified details visible on the card. Copy the card holder's Bangla father and mother names into fatherNameBn and motherNameBn when visible. Put their exact English/transliterated uppercase versions into fatherNameEn and motherNameEn. Never guess an unreadable name. Copy names exactly; keep internal spaces and uppercase all English names. NID must be digits only.
 Address rules are strict:
 1. addressBn must be exactly two lines and contain VALUES ONLY. Never write labels such as গ্রাম, ডাকঘর, পোস্ট কোড, থানা, উপজেলা, জেলা, Village, Post, Thana, Upazila or District.
 2. addressBn line 1: village/road name, post-office name, postcode. Separate available values with comma and one space.
@@ -579,7 +592,7 @@ Address rules are strict:
                 parts.append({"inline_data": {"mime_type": mime_type, "data": encoded}})
             if len(parts) == 1:
                 raise ValueError("সঠিক ID image পাওয়া যায়নি")
-            properties = {key: {"type": "string"} for key in ("name", "nameBn", "fatherNameBn", "motherNameBn", "fatherNameEn", "motherNameEn", "nid", "dob", "addressBn", "addressEn", "text")}
+            properties = {key: {"type": "string"} for key in ("name", "nameBn", "fatherNameBn", "motherNameBn", "fatherNameEn", "motherNameEn", "nid", "dob", "issueDate", "issuePlace", "village", "postOffice", "postCode", "thana", "district", "addressBn", "addressEn", "text")}
             payload = json.dumps({"contents": [{"role": "user", "parts": parts}],
                 "generationConfig": {"temperature": 0, "responseMimeType": "application/json",
                     "responseJsonSchema": {"type": "object", "properties": properties,
@@ -823,9 +836,10 @@ OCR TEXT:
                 path = ARCHIVE_DIR / f"{row['serial']}_{filename}"
                 old_path = Path(row["archive_path"]); path.write_bytes(content)
                 if old_path != path and old_path.is_file() and old_path.parent.resolve() == ARCHIVE_DIR.resolve(): old_path.unlink()
-                con.execute("""UPDATE customers SET name=?,name_bn=?,customer_number=?,phone=?,email=?,archive_name=?,archive_path=?,case_json=? WHERE id=?""",
+                con.execute("""UPDATE customers SET name=?,name_bn=?,customer_number=?,phone=?,email=?,archive_name=?,archive_path=?,case_json=?,revision=revision+1 WHERE id=?""",
                     (name, str(data.get("nameBn", "")).strip(), str(data.get("customerNumber", "")).strip(), str(data.get("phone", "")).strip(),
                      str(data.get("email", "")).strip(), filename, str(path.resolve()), case_json, customer_id))
+                con.execute("DELETE FROM customer_assets WHERE customer_id=? AND kind='declaration'", (customer_id,))
             return self.reply(200, {"id": customer_id, "serial": row["serial"], "archiveName": filename})
         except Exception as error: return self.reply(400, {"error": str(error)})
 
@@ -911,7 +925,7 @@ Use an empty value after the label when unreadable. Never include parents' names
                 if parsed is not None:
                     break
             if parsed is None: raise ValueError(last_error or "AI থেকে ID details পাওয়া যায়নি; পরিষ্কার ছবি দিয়ে আবার চেষ্টা করুন")
-            clean = {k: str(parsed.get(k, "") or "").strip() for k in ("name", "nameBn", "nid", "dob", "addressBn", "addressEn", "text")}
+            clean = {k: str(parsed.get(k, "") or "").strip() for k in ("name", "nameBn", "nid", "dob", "issueDate", "issuePlace", "village", "postOffice", "postCode", "thana", "district", "addressBn", "addressEn", "text")}
             clean["nid"] = "".join(c for c in clean["nid"] if c.isdigit()); clean["name"] = clean["name"].upper(); clean["addressEn"] = clean["addressEn"].upper()
             return self.reply(200, clean)
         except urllib.error.HTTPError as error:
@@ -923,7 +937,8 @@ Use an empty value after the label when unreadable. Never include parents' names
     def reply(self, status, value, cookie=None, clear=False):
         content = json.dumps(value, ensure_ascii=False).encode(); self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8"); self.send_header("Cache-Control", "no-store")
-        if cookie: self.send_header("Set-Cookie", f"ds_session={cookie}; Path=/; HttpOnly; SameSite=Strict; Max-Age={SESSION_DAYS * 86400}")
+        secure = "; Secure" if os.environ.get("PUBLIC_URL", "").startswith("https://") else ""
+        if cookie: self.send_header("Set-Cookie", f"ds_session={cookie}; Path=/; HttpOnly; SameSite=Strict; Max-Age={SESSION_DAYS * 86400}{secure}")
         if clear: self.send_header("Set-Cookie", "ds_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0")
         self.send_header("Content-Length", str(len(content))); self.end_headers(); self.wfile.write(content)
 

@@ -1,0 +1,12 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    environment:
+      PUBLIC_URL: https://abmgroup.tech
+      DATA_DIR: /data
+      PORT: 8765
+    volumes:
+      - ./data:/data
+    ports:
+      - "127.0.0.1:8765:8765"

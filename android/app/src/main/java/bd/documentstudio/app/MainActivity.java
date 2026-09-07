@@ -32,13 +32,17 @@ public class MainActivity extends ComponentActivity {
     private Uri cameraUri;
     private String pendingDownload, pendingCookie;
     private boolean pageFailed;
+    private LinearLayout loading;
+    private float touchX, touchY;
+    private boolean pullCandidate;
+    private static final String SERVER = "https://abmgroup.tech/";
     private final java.util.concurrent.ExecutorService io = Executors.newSingleThreadExecutor();
     private ActivityResultLauncher<IntentSenderRequest> scannerLauncher;
     private ActivityResultLauncher<Intent> fileLauncher, saveLauncher;
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
-        server = getPreferences(0).getString("server", "http://100.96.199.117:8765/");
+        server = SERVER;
         scannerLauncher = registerForActivityResult(new ActivityResultContracts.StartIntentSenderForResult(), result -> {
             if (result.getResultCode() != RESULT_OK) { scanResult(null, "cancelled"); return; }
             GmsDocumentScanningResult scan = GmsDocumentScanningResult.fromActivityResultIntent(result.getData());
@@ -93,24 +97,37 @@ public class MainActivity extends ComponentActivity {
             androidx.core.graphics.Insets bars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
             view.setPadding(bars.left, bars.top, bars.right, bars.bottom); return insets;
         });
-        LinearLayout bar = new LinearLayout(this); bar.setPadding(12, 4, 12, 4);
-        TextView title = new TextView(this); title.setText("Document Studio"); title.setTextSize(19); title.setTextColor(Color.rgb(22,70,62)); title.setGravity(17);
-        bar.addView(title, new LinearLayout.LayoutParams(0, 48, 1));
-        Button settings = new Button(this); settings.setText("Server"); settings.setOnClickListener(v -> settings()); bar.addView(settings);
-        Button reload = new Button(this); reload.setText("↻"); reload.setContentDescription("Reload"); reload.setOnClickListener(v -> new AlertDialog.Builder(this).setMessage("Save না করা তথ্য মুছে যাবে। Reload করবেন?").setPositiveButton("Reload", (d,w) -> web.reload()).setNegativeButton("না", null).show()); bar.addView(reload);
-        root.addView(bar);
-        status = new TextView(this); status.setPadding(14, 8, 14, 8); status.setText("Server-এ সংযোগ হচ্ছে…"); root.addView(status);
-        web = new WebView(this); root.addView(web, new LinearLayout.LayoutParams(-1, 0, 1)); setContentView(root);
+        android.widget.FrameLayout content = new android.widget.FrameLayout(this);
+        root.addView(content, new LinearLayout.LayoutParams(-1, -1));
+        web = new WebView(this); content.addView(web, new android.widget.FrameLayout.LayoutParams(-1, -1));
+        loading = new LinearLayout(this); loading.setOrientation(LinearLayout.VERTICAL); loading.setGravity(android.view.Gravity.CENTER); loading.setBackgroundColor(Color.WHITE); loading.setPadding(30,30,30,30);
+        ProgressBar progress = new ProgressBar(this); loading.addView(progress);
+        status = new TextView(this); status.setGravity(android.view.Gravity.CENTER); status.setTextColor(Color.rgb(32,42,56)); status.setTextSize(18); status.setPadding(16,24,16,16); status.setText("Document Studio লোড হচ্ছে…"); loading.addView(status);
+        Button retry = new Button(this); retry.setText("আবার লোড করুন"); retry.setOnClickListener(v -> reloadCurrentPage()); loading.addView(retry);
+        content.addView(loading, new android.widget.FrameLayout.LayoutParams(-1,-1)); setContentView(root);
+        web.setOnTouchListener((view, event) -> {
+            if(event.getActionMasked()==android.view.MotionEvent.ACTION_DOWN) {touchX=event.getX();touchY=event.getY();pullCandidate=!web.canScrollVertically(-1);}
+            if(event.getPointerCount()>1) pullCandidate=false;
+            if(event.getActionMasked()==android.view.MotionEvent.ACTION_UP) {
+                float density=getResources().getDisplayMetrics().density;
+                boolean refresh=pullCandidate&&!web.canScrollVertically(-1)&&event.getY()-touchY>120*density&&Math.abs(event.getX()-touchX)<70*density;
+                pullCandidate=false;
+                if(refresh){view.performClick();reloadCurrentPage();return true;}
+            }
+            if(event.getActionMasked()==android.view.MotionEvent.ACTION_CANCEL)pullCandidate=false;
+            return false;
+        });
         WebSettings config = web.getSettings(); config.setJavaScriptEnabled(true); config.setDomStorageEnabled(true);
         config.setAllowFileAccess(false); config.setAllowContentAccess(false); config.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
-        config.setUserAgentString(config.getUserAgentString() + " DocumentStudioAndroid/1");
+        config.setUserAgentString(config.getUserAgentString() + " DocumentStudioAndroid/2");
         CookieManager.getInstance().setAcceptCookie(true); CookieManager.getInstance().setAcceptThirdPartyCookies(web, false);
         web.setWebViewClient(new WebViewClient() {
-            @Override public void onPageStarted(WebView view, String url, android.graphics.Bitmap icon) { pageFailed = false; }
+            @Override public void onPageStarted(WebView view, String url, android.graphics.Bitmap icon) { pageFailed = false; loading.setVisibility(android.view.View.VISIBLE); status.setText("Document Studio লোড হচ্ছে…"); }
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 String url = request.getUrl().toString();
                 if (request.isForMainFrame() && trusted(view.getUrl()) && url.startsWith("documentstudio://")) {
                     Uri u = request.getUrl();
+                    if ("ready".equals(u.getHost()) && !pageFailed) loading.setVisibility(android.view.View.GONE);
                     if ("scan".equals(u.getHost())) startScan(u.getQueryParameter("id"));
                     if ("download".equals(u.getHost())) download(u.getQueryParameter("data"), u.getQueryParameter("name"));
                     if ("preview".equals(u.getHost())) previewPdf(u.getQueryParameter("data"));
@@ -121,10 +138,13 @@ public class MainActivity extends ComponentActivity {
             }
             @Override public void onPageFinished(WebView view, String url) {
                 if (!trusted(url)) return;
-                if (!pageFailed) status.setVisibility(android.view.View.GONE); CookieManager.getInstance().flush();
+                if (!pageFailed) {
+                    getPreferences(0).edit().putString("lastUrl",url).apply();
+                    web.evaluateJavascript("window.documentStudioReady === true", value -> { if ("true".equals(value)) loading.setVisibility(android.view.View.GONE); });
+                } CookieManager.getInstance().flush();
             }
             @Override public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
-                if (request.isForMainFrame()) { pageFailed = true; status.setVisibility(android.view.View.VISIBLE); status.setText("সংযোগ হয়নি। PC server ও ফোনের Tailscale চালু করুন, তারপর ↻ চাপুন। Server বাটনে ঠিকানা বদলাতে পারবেন।"); }
+                if (request.isForMainFrame()) { pageFailed = true; loading.setVisibility(android.view.View.VISIBLE); status.setText("abmgroup.tech-এ সংযোগ হয়নি। ইন্টারনেট পরীক্ষা করে আবার লোড করুন।"); }
             }
         });
         web.setWebChromeClient(new WebChromeClient() {
@@ -161,26 +181,26 @@ public class MainActivity extends ComponentActivity {
             } else download(url, URLUtil.guessFileName(url, disposition, mime));
         });
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
-            @Override public void handleOnBackPressed() { if (web.canGoBack()) web.goBack(); else new AlertDialog.Builder(MainActivity.this).setMessage("অ্যাপ বন্ধ করবেন? Save না করা তথ্য হারাতে পারে।").setPositiveButton("বন্ধ করুন", (d,w) -> finish()).setNegativeButton("না", null).show(); }
+            @Override public void handleOnBackPressed() { if (web.canGoBack()) web.goBack(); else { rememberPage(); finish(); } }
         });
-        web.loadUrl(server);
+        String lastUrl=getPreferences(0).getString("lastUrl",server);
+        web.loadUrl(trusted(lastUrl)?lastUrl:server);
     }
     private boolean trusted(String url) {
         if (url == null) return false;
         Uri a = Uri.parse(server), b = Uri.parse(url);
         return a.getScheme().equals(b.getScheme()) && a.getHost().equals(b.getHost()) && a.getPort() == b.getPort();
     }
-    private void settings() {
-        EditText field = new EditText(this); field.setSingleLine(true); field.setText(server);
-        new AlertDialog.Builder(this).setTitle("Server address").setMessage("PC চালু রাখুন। বাইরে থেকে ব্যবহার করতে একই Tailscale account-এ ফোন যুক্ত করুন। ঠিকানা বদলালে অসম্পূর্ণ ফর্ম reset হবে।").setView(field).setNegativeButton("Cancel", null).setPositiveButton("Save", (d,w) -> {
-            String value = field.getText().toString().trim();
-            Uri uri = Uri.parse(value); String host = uri.getHost();
-            boolean local = host != null && (host.matches("10\\.\\d+\\.\\d+\\.\\d+") || host.matches("192\\.168\\.\\d+\\.\\d+") || host.matches("172\\.(1[6-9]|2[0-9]|3[01])\\.\\d+\\.\\d+") || host.matches("100\\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\\.\\d+\\.\\d+") || host.endsWith(".ts.net"));
-            if (host == null || uri.getUserInfo() != null || !("https".equals(uri.getScheme()) || ("http".equals(uri.getScheme()) && local))) { notice("HTTPS অথবা private LAN/Tailscale address দিন"); return; }
-            server = uri.buildUpon().path("/").clearQuery().fragment(null).build().toString();
-            getPreferences(0).edit().putString("server", server).apply(); web.loadUrl(server);
-        }).show();
+    private void reloadCurrentPage() {
+        if (pageFailed || !trusted(web.getUrl())) { web.loadUrl(getPreferences(0).getString("lastUrl",server)); return; }
+        rememberPage();
+        web.evaluateJavascript("Promise.resolve(window.documentStudioBeforeReload ? window.documentStudioBeforeReload() : null).then(()=>location.reload()).catch(()=>alert('Draft save হয়নি। Storage পরীক্ষা করে আবার চেষ্টা করুন।'))",null);
     }
+    private void rememberPage() {
+        if(web!=null && trusted(web.getUrl()))getPreferences(0).edit().putString("lastUrl",web.getUrl()).apply();
+        CookieManager.getInstance().flush();
+    }
+    @Override protected void onPause() { rememberPage(); super.onPause(); }
     private void startScan(String id) {
         if (id == null || scanId != null) return;
         scanId = id;

@@ -1,26 +1,29 @@
-import { DEFAULT_SERVER, serverOrigin, personFields, casePeople, safeImage } from './model.mjs';
+import {declarationCanvas, declarationPdf} from '../src/declaration.js';
+import { DEFAULT_SERVER, personFields, casePeople, safeImage } from './model.mjs';
 const $ = id => document.getElementById(id);
-let server = DEFAULT_SERVER, selected = null, requestVersion = 0;
+const server = DEFAULT_SERVER;
+let selected = null, requestVersion = 0, selectedCase = null, selectedRevision = null, declarationDirty = false, lastSeenRevision = null;
 const blobs = new Set();
 function notice(message = '', error = false) { $('notice').textContent = message; $('notice').className = error ? 'error' : ''; }
-function clearRecords() { requestVersion++; selected = null; $('results').replaceChildren(); $('record-content').replaceChildren(); $('record').hidden = true; $('results').hidden = false; }
+function clearRecords() { requestVersion++; selected = null; selectedCase = null; declarationDirty = false; $('results').replaceChildren(); $('record-content').replaceChildren(); $('record').hidden = true; $('results').hidden = false; }
 function unauthenticated() { clearRecords(); $('workspace').hidden = true; $('login').hidden = false; }
 async function api(path, options = {}) {
-  const response = await fetch(server + path, { ...options, credentials: 'include', cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(20000), headers: { 'Content-Type': 'application/json', ...options.headers } });
+  const response = await fetch(server + path, { ...options, credentials: 'include', cache: 'no-store', redirect: 'error', signal: options.signal || AbortSignal.timeout(90000), headers: { 'Content-Type': 'application/json', ...options.headers } });
   if (response.status === 401) { unauthenticated(); notice('Login করুন। Session শেষ হয়ে থাকতে পারে।', true); throw new Error('Login করুন। Session শেষ হয়ে থাকতে পারে।'); }
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || `Server error ${response.status}`);
   return result;
 }
-function showError(error) { notice(error instanceof TypeError || error.name === 'TimeoutError' ? 'Server পাওয়া যাচ্ছে না। PC/server, Tailscale ও Server address পরীক্ষা করুন।' : error.message, true); }
+function showError(error) { notice(error instanceof TypeError || error.name === 'TimeoutError' ? 'Server পাওয়া যাচ্ছে না। ইন্টারনেট ও abmgroup.tech server পরীক্ষা করুন।' : error.message, true); }
 async function connect() {
   notice('Server-এ সংযোগ হচ্ছে…');
   try {
     const auth = await api('/api/auth/status');
     if (!auth.authenticated) { unauthenticated(); notice(auth.setupRequired ? 'আগে মূল software-এ username/password তৈরি করুন।' : 'আগের username/password দিয়ে Login করুন।'); return; }
+    if (!['admin','master_admin','subadmin'].includes(auth.role)) { unauthenticated(); notice('পূর্ণ customer file দেখতে Admin account দিয়ে Login করুন।', true); return; }
     $('login').hidden = true; $('workspace').hidden = false; $('user').textContent = auth.username; notice();
     await search();
-  } catch (error) { unauthenticated(); showError(error); $('settings').open = true; }
+  } catch (error) { unauthenticated(); showError(error); }
 }
 async function search() {
   clearRecords(); const version = requestVersion;
@@ -51,33 +54,85 @@ function fields(container, values) {
   }
   container.append(list);
 }
+function downloadBlob(blob, name) {
+  const url = URL.createObjectURL(blob); blobs.add(url);
+  const link = document.createElement('a'); link.href=url; link.download=name.replace(/[\\/:*?"<>|]/g,'_'); link.click();
+  setTimeout(()=>{URL.revokeObjectURL(url);blobs.delete(url);},60000);
+}
 function photo(container, source, label) {
   const src = safeImage(source); if (!src) return;
-  const image = document.createElement('img'); image.src = src; image.alt = label; image.className = 'photo'; image.loading = 'lazy'; container.append(image);
+  const figure=document.createElement('figure');
+  const image = document.createElement('img'); image.src=src; image.alt=label; image.className='photo'; image.loading='lazy';
+  const download=document.createElement('button');download.textContent=label+' Download';
+  download.addEventListener('click',async()=>{const blob=await (await fetch(src)).blob();downloadBlob(blob,`${selected?.serial||'Customer'}_${label}.${blob.type.includes('png')?'png':'jpg'}`);});
+  figure.append(image,download);container.append(figure);
 }
 function personCard(label, person, fallback = {}, nominee = false) {
-  const card = document.createElement('section'); card.className = 'person';
-  const title = document.createElement('h3'); title.textContent = label; card.append(title);
-  const values = personFields(person, fallback); fields(card, nominee ? values.slice(2) : values);
-  photo(card, person.photo, label + ' photo');
-  if (safeImage(person.idFront) || safeImage(person.idBack) || safeImage(person.birthCertificate)) {
-    const images = document.createElement('details'); images.className = 'documents'; const summary = document.createElement('summary'); summary.textContent = 'ID / Birth certificate দেখুন'; images.append(summary);
-    photo(images, person.idFront, 'ID Front'); photo(images, person.idBack, 'ID Back'); photo(images, person.birthCertificate, 'Birth certificate'); card.append(images);
+  const card=document.createElement('section');card.className='person';const title=document.createElement('h3');title.textContent=label;card.append(title);
+  const values=personFields(person,fallback);
+  if(nominee) {
+    fields(card,[values[3],values[2],values[4],values[10]]);
+    photo(card,person.photo,label+' Photo');photo(card,person.idFront,label+' ID Front');photo(card,person.idBack,label+' ID Back');
+  } else {
+    fields(card,values.slice(0,5));
+    photo(card,person.idFront,'Applicant ID Front');photo(card,person.idBack,'Applicant ID Back');
+    fields(card,values.slice(5));photo(card,person.photo,'Applicant Photo');
   }
-  $('record-content').append(card);
+  photo(card,person.birthCertificate,'Birth Certificate');$('record-content').append(card);
+}
+async function signatureCards() {
+  if(!selected)return;
+  const id=selected.id;const result=await api(`/api/customers/${id}/signature-card`);
+  if(selected?.id!==id)return;
+  let section=document.getElementById('signature-cards');
+  if(!section){section=document.createElement('section');section.id='signature-cards';$('record-content').append(section);}
+  section.replaceChildren();const title=document.createElement('h3');title.textContent='Signed Signature Card';section.append(title);
+  if(!result.documents?.length){const p=document.createElement('p');p.textContent='Admin card upload করলে এখানে স্বয়ংক্রিয়ভাবে দেখা যাবে।';section.append(p);}
+  for(const doc of result.documents||[])for(const [i,page] of (doc.pages||[]).entries())photo(section,page,`Signature Card ${i+1}`);
+}
+async function declarationCard(caseData) {
+  const card=document.createElement('section');card.className='declaration';const title=document.createElement('h3');title.textContent='Income Declaration';card.append(title);
+  const values={...caseData.declaration};const form=document.createElement('div');
+  const labels={customerName:'Customer name',fatherName:'Father name',motherName:'Mother name',address:'পাড়া / গ্রাম',postOffice:'Post office',postCode:'Post code',thana:'Thana',district:'District',monthlyIncome:'Monthly income',accountNumber:'Account number',rawDescription:'মূল বক্তব্য',polishedDescription:'সাজানো Description'};
+  const inputs={};
+  for(const [key,label] of Object.entries(labels)) {const wrapper=document.createElement('label');wrapper.textContent=label;const input=document.createElement(key.includes('Description')?'textarea':'input');input.value=values[key]||'';input.addEventListener('input',()=>{values[key]=input.value;declarationDirty=true;});inputs[key]=input;wrapper.append(input);form.append(wrapper);}
+  const preview=document.createElement('img');preview.className='pdfPreview';preview.alt='Income declaration PDF preview';
+  const controls=document.createElement('div');controls.className='actions';
+  const recreate=document.createElement('button');recreate.textContent='AI দিয়ে Recreate';
+  const save=document.createElement('button');save.textContent='Details থেকে PDF Save & Download';
+  const existing=document.createElement('button');existing.textContent='Saved PDF Download';existing.className='quiet';
+  const message=document.createElement('p');message.setAttribute('role','status');
+  const id=selected.id;
+  let revision=selectedRevision;
+  const applicant=casePeople(caseData).applicant;
+  const signature=caseData.docs?.find(d=>d.kind==='signature')?.pages?.[0];
+  const render=async()=>{const canvas=await declarationCanvas(applicant,values,signature,'income-declaration-page1.png');preview.src=canvas.toDataURL('image/jpeg',.85);};
+  recreate.addEventListener('click',async()=>{recreate.disabled=true;save.disabled=true;message.textContent='AI দিয়ে Description তৈরি হচ্ছে…';try{const result=await api('/api/gemini-description',{method:'POST',body:JSON.stringify({text:values.rawDescription||values.polishedDescription,name:values.customerName||applicant.nameBn||applicant.name,profession:applicant.profession||'',monthlyIncome:values.monthlyIncome})});values.polishedDescription=result.text;inputs.polishedDescription.value=result.text;declarationDirty=true;await render();message.textContent='Review করে Save & Download চাপুন।';}catch(error){message.textContent=error.message;}finally{recreate.disabled=false;save.disabled=false;}});
+  save.addEventListener('click',async()=>{save.disabled=true;recreate.disabled=true;message.textContent='PDF তৈরি ও Save হচ্ছে…';try{await render();const pdf=await declarationPdf(applicant,values,signature,'income-declaration-page1.png');const encoded=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(pdf);});const result=await api(`/api/customers/${id}/declaration`,{method:'POST',body:JSON.stringify({declaration:values,pdf:encoded,revision})});revision=result.revision;if(selected?.id===id){selectedRevision=result.revision;lastSeenRevision=result.revision;declarationDirty=false;}downloadBlob(pdf,`${id}_Income_Declaration.pdf`);message.textContent='PDF Save হয়েছে।';}catch(error){message.textContent=error.message;}finally{save.disabled=false;recreate.disabled=false;}});
+  existing.addEventListener('click',async()=>{try{const response=await fetch(`${server}/api/customers/${id}/declaration`,{credentials:'include',cache:'no-store',redirect:'error'});if(!response.ok)throw new Error('Saved PDF পাওয়া যায়নি। Details থেকে PDF তৈরি করুন।');downloadBlob(await response.blob(),`${id}_Income_Declaration.pdf`);}catch(error){message.textContent=error.message;}});
+  controls.append(recreate,save,existing);card.append(preview,form,controls,message);$('record-content').append(card);
+  await render();
 }
 async function openRecord(row) {
   const version = ++requestVersion; selected = row; $('record-content').replaceChildren(); $('results').hidden = true; $('record').hidden = false;
   $('record-title').textContent = row.name || row.name_bn || 'Customer'; $('serial').textContent = row.serial || ''; notice('Details আসছে…');
   let caseData = {};
-  try { const data = await api(`/api/customers/${encodeURIComponent(row.id)}/edit`); if (version !== requestVersion) return; caseData = data.case || {}; notice(); }
-  catch (error) { if (version !== requestVersion) return; if ($('workspace').hidden) return; notice('সম্পূর্ণ details পাওয়া যায়নি। ' + error.message + ' মূল PDF download করে দেখুন।', true); }
+  try { const data = await api(`/api/customers/${encodeURIComponent(row.id)}/extension`); if (version !== requestVersion) return; caseData = data.case || {}; selectedCase=caseData; selectedRevision=data.revision; lastSeenRevision=data.revision; declarationDirty=false; notice(); }
+  catch (error) { if (version !== requestVersion) return; if ($('workspace').hidden) return; notice('সম্পূর্ণ details পাওয়া যায়নি। ' + error.message + ' মূল PDF download করে দেখুন।', true); return; }
   const { applicant, nominees } = casePeople(caseData);
-  personCard('Applicant / আবেদনকারী', applicant, row);
-  const contact = document.createElement('section'); contact.className = 'contact'; fields(contact, [['Phone number', row.phone || caseData.details?.phone || ''], ['Email address', row.email || caseData.details?.email || '']]); $('record-content').append(contact);
+  personCard('Applicant / আবেদনকারী', applicant, {...row,email:row.email||caseData.details?.email,phone:row.phone||caseData.details?.phone});
   if (nominees.length) nominees.forEach((p, i) => personCard(`Nominee / নমিনি ${nominees.length > 1 ? i + 1 : ''}`, p, {}, true));
   else { const missing = document.createElement('p'); missing.textContent = 'Nominee-এর details সংরক্ষিত নেই।'; $('record-content').append(missing); }
+  try { await declarationCard(caseData); } catch(error) { showError(error); }
+  if(version===requestVersion) await signatureCards();
 }
+let polling=false;
+setInterval(async()=>{
+  if(!selected || document.hidden || polling)return;
+  polling=true;
+  const id=selected.id;
+  try{const result=await api(`/api/customers/${id}/revision`);if(selected?.id===id&&result.revision!==lastSeenRevision){await signatureCards();lastSeenRevision=result.revision;if(!declarationDirty){notice('ফাইল আপডেট হয়েছে—সর্বশেষ Signature Card দেখানো হচ্ছে। অন্য details দেখতে ফাইল আবার খুলুন।');}else{notice('Server-এ file update হয়েছে। আপনার edit রাখা আছে; Save conflict হলে নতুন file খুলুন।');}}}catch(error){showError(error);}finally{polling=false;}
+},5000);
 $('search-form').addEventListener('submit', event => { event.preventDefault(); search(); });
 $('back').addEventListener('click', () => { requestVersion++; selected = null; $('record').hidden = true; $('record-content').replaceChildren(); $('results').hidden = false; notice(); });
 $('login-form').addEventListener('submit', async event => {
@@ -87,15 +142,6 @@ $('login-form').addEventListener('submit', async event => {
   finally { $('login-button').disabled = false; }
 });
 $('logout').addEventListener('click', async () => { try { await api('/api/auth/logout', { method: 'POST', body: '{}' }); unauthenticated(); notice('Logout হয়েছে'); } catch (error) { showError(error); } });
-$('server-form').addEventListener('submit', async event => {
-  event.preventDefault();
-  try {
-    const next = serverOrigin($('server').value.trim());
-    const origin = new URL(next).protocol + '//' + new URL(next).hostname + '/*';
-    if (!await chrome.permissions.request({ origins: [origin] })) throw new Error('Server permission দেওয়া হয়নি');
-    clearRecords(); $('workspace').hidden = true; server = next; await chrome.storage.local.set({ server }); $('settings').open = false; await connect();
-  } catch (error) { showError(error); }
-});
 $('close').addEventListener('click', async () => { const current = await chrome.windows.getCurrent(); await chrome.sidePanel.close({ windowId: current.id }); });
 $('open-server').addEventListener('click', () => chrome.tabs.create({ url: server + '/' }));
 $('download').addEventListener('click', async () => {
@@ -112,12 +158,4 @@ $('download').addEventListener('click', async () => {
   } catch (error) { showError(error); } finally { $('download').disabled = false; }
 });
 window.addEventListener('pagehide', () => { for (const url of blobs) URL.revokeObjectURL(url); });
-try {
-  const settings = await chrome.storage.local.get('server');
-  const previous = settings.server ? serverOrigin(settings.server) : '';
-  // Migrate the previous PC-only default to the user's private Tailscale server.
-  server = !previous || ['http://127.0.0.1:8765', 'http://localhost:8765'].includes(previous) ? DEFAULT_SERVER : previous;
-  await chrome.storage.local.set({ server });
-} catch { server = DEFAULT_SERVER; }
-$('server').value = server;
 connect();

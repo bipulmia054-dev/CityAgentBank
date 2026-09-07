@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>City Bank Agent Banking UI</title>
+<style>
+:root{
+  --red:#df101c;--red2:#ef1b27;--pink:#fff5f5;--line:#eadede;
+  --text:#252525;--muted:#858585;--green:#18a957;--orange:#ff8517;
+  --shadow:0 2px 10px rgba(40,0,0,.045);
+}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:Inter,Segoe UI,Arial,sans-serif;color:var(--text);background:#fff}
+button,input{font:inherit}button{cursor:pointer}
+a{text-decoration:none;color:inherit}
+.app{display:flex;min-height:100vh;background:#fff}
+.sidebar{width:240px;flex:0 0 240px;border-right:1px solid #eee;background:#fff;display:flex;flex-direction:column}
+.brand{height:84px;border-bottom:1px solid #eee;display:flex;align-items:center;gap:10px;padding:0 24px}
+.logo{width:29px;height:29px;border-radius:7px;background:var(--red);color:#fff;display:grid;place-items:center;font-weight:900}
+.logo-text{font-weight:900;color:var(--red);font-size:12px;line-height:1}
+.logo-sub{font-size:8px;color:#555;font-weight:800;margin-top:4px}
+.collapse{margin-left:auto;color:#aaa;font-size:19px}
+.nav{padding:18px 10px}.nav-title{font-size:8px;color:#999;font-weight:900;letter-spacing:1px;margin:24px 12px 8px}
+.nav-item{height:37px;border-radius:7px;padding:0 13px;display:flex;align-items:center;gap:11px;color:#888;font-size:12px;margin:3px 0}
+.nav-item:hover,.nav-item.active{background:var(--red);color:#fff}.nav-ico{width:17px;text-align:center;font-size:15px}
+.side-foot{margin-top:auto;border-top:1px solid #eee;padding:18px 20px}.person{display:flex;align-items:center;gap:9px;margin-bottom:19px}
+.avatar{width:29px;height:29px;border-radius:50%;display:grid;place-items:center;background:#242424;color:#fff;font-size:9px;font-weight:900}
+.person b{font-size:10px}.person small{display:block;color:#888;font-size:7px;margin-top:3px}.logout{font-size:11px;color:#888}
+.main{min-width:0;flex:1;background:var(--pink)}
+.topbar{height:84px;background:#fff;border-bottom:1px solid #eee;display:flex;align-items:center;padding:0 27px}
+.topbar h1{font-size:18px;margin:0}.top-user{margin-left:auto;display:flex;align-items:center;gap:16px}.top-user-info{text-align:right}.top-user-info b{font-size:10px}.top-user-info small{display:block;color:#888;font-size:7px;margin-top:3px}.bell{position:relative;color:#777}.bell:after{content:"";position:absolute;right:-2px;top:-1px;width:5px;height:5px;background:var(--red);border-radius:50%}
+.page{padding:27px;max-width:1080px;margin:auto}.hero{min-height:130px;background:var(--red);color:#fff;border-radius:14px;padding:31px 27px;display:flex;align-items:center;position:relative;overflow:hidden}
+.hero:after{content:"";position:absolute;width:150px;height:150px;right:-40px;top:-45px;border-radius:50%;background:#fff1;box-shadow:-730px 105px 0 0 #fff0}
+.hero h2{margin:0 0 6px;font-size:25px;position:relative;z-index:1}.hero p{margin:0;font-size:12px;line-height:1.45;position:relative;z-index:1}.hero button{margin-left:auto;border:0;background:#fff;color:var(--red);font-weight:900;padding:11px 16px;border-radius:9px;box-shadow:0 3px 10px #0002;position:relative;z-index:2}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:25px}.card{background:#fff;border:1px solid #eadede;border-radius:13px;box-shadow:var(--shadow)}
+.stat{height:132px;padding:13px}.stat-head{display:flex;justify-content:space-between;align-items:center}.ico{width:28px;height:28px;border-radius:8px;background:#fff0f1;color:var(--red);display:grid;place-items:center}.tag{font-size:8px;font-weight:900;color:var(--green);background:#eaf9f0;padding:5px 7px;border-radius:6px}.tag.orange{color:var(--orange);background:#fff4e9}.tag.red{color:var(--red);background:#fff0f1}.stat b{display:block;font-size:21px;margin-top:24px}.stat small{font-size:8px;color:#888;font-weight:900;letter-spacing:.5px}
+.two{display:grid;grid-template-columns:minmax(0,1fr) 292px;gap:25px;margin-top:25px}.panel-head{height:53px;padding:0 19px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #eee}.panel-head b{font-size:12px}.redlink{color:var(--red);font-size:9px;font-weight:900}
+.table{padding:0 12px 12px;overflow:auto}.table table{width:100%;min-width:600px;border-collapse:collapse}.table th{height:38px;text-align:left;background:#fffafa;color:#888;font-size:8px;letter-spacing:.6px}.table td{height:50px;border-top:1px solid #eee;font-size:9px}.cust{display:flex;align-items:center;gap:8px;font-weight:800}.init{width:27px;height:27px;border-radius:50%;display:grid;place-items:center;background:var(--red);color:#fff;font-size:8px}.status{font-size:7px;font-weight:900;padding:5px 7px;border-radius:6px}.ok{color:var(--green);background:#e9faf0}.pending{color:#c89c00;background:#fff9dd}.failed{color:var(--red);background:#fff0f1}
+.target{padding:0 19px 18px}.target-row{display:flex;justify-content:space-between;font-size:10px;font-weight:900;margin-top:17px}.pct{color:var(--red)}.bar{height:7px;border-radius:9px;background:#ffe5e7;margin-top:5px}.fill{height:100%;background:var(--red);border-radius:9px}.note{font-size:8px;color:#888;margin-top:7px}.reward{height:40px;width:100%;background:#fff;border:1px solid #ecdcdc;border-radius:9px;font-weight:900;margin-top:17px;font-size:10px}
+
+.mobile-preview{max-width:390px;margin:0 auto;background:#fff;border:1px solid #eee;box-shadow:0 4px 30px #0001;min-height:100vh;display:none}.mobile-head{height:48px;display:flex;align-items:center;padding:0 15px;border-bottom:1px solid #eee;gap:11px}.mobile-head .logo{width:24px;height:24px}.mobile-head .logo-text{font-size:9px}.mobile-head .menu{margin-left:auto}.mobile-page{background:var(--pink);padding:9px 9px 70px;min-height:calc(100vh - 48px)}.mobile-welcome{background:#fff;border:1px solid #eadede;border-radius:11px;padding:13px 12px;margin-bottom:9px;position:relative;overflow:hidden}.mobile-welcome:after{content:"";position:absolute;width:90px;height:90px;right:-25px;top:-40px;border-radius:50%;background:#fee}.mobile-welcome h3{font-size:13px;margin:0 0 2px}.mobile-welcome p{font-size:7px;color:#999;margin:0 0 9px}.mobile-welcome button{width:100%;height:29px;background:var(--red);border:0;color:#fff;border-radius:6px;font-size:8px;font-weight:900}.mstats{display:grid;grid-template-columns:1fr 1fr;gap:8px}.mstat{height:85px;padding:10px}.mstat b{display:block;font-size:15px;margin-top:13px}.mstat small{font-size:6px;color:#888;font-weight:900}.m-panel{margin-top:9px;padding:11px}.m-panel h4{margin:0 0 8px;font-size:10px}.quick{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.quick button{height:45px;border:1px solid #eadede;background:#fff;border-radius:9px;font-size:7px;color:#777}.activity{margin-top:10px}.activity-item{background:#fff;border:1px solid #eadede;border-radius:9px;padding:9px;margin-top:6px;font-size:7px}.bottom-nav{position:fixed;bottom:0;width:390px;max-width:100%;height:52px;background:#fff;border-top:1px solid #eee;display:flex;justify-content:space-around;align-items:center}.bottom-nav div{text-align:center;color:#888;font-size:7px}.bottom-nav .active{color:var(--red);font-weight:900}.bottom-nav i{display:block;font-style:normal;font-size:15px;margin-bottom:2px}
+
+/* Admin */
+.admin-page{padding:15px;max-width:1120px;margin:auto}.admin-top{display:grid;grid-template-columns:repeat(4,1fr);gap:13px}.admin-stat{height:83px;padding:12px}.admin-stat .line{display:flex;justify-content:space-between;font-size:7px;color:#888}.admin-stat b{display:block;font-size:17px;margin-top:13px}.admin-body{display:grid;grid-template-columns:1.5fr .85fr;gap:14px;margin-top:14px}.review{padding:0 12px 10px}.review-row{height:40px;border-top:1px solid #eee;display:grid;grid-template-columns:1.1fr 1fr 1fr .8fr .65fr;align-items:center;font-size:7px}.review-row.head{height:30px;color:#888;font-weight:900}.pill{font-size:6px;font-weight:900;padding:4px 6px;border-radius:5px;width:max-content}.approve{background:#e8faf0;color:var(--green)}.reviewing{background:#fff0e9;color:var(--orange)}.admin-lower{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}.worker,.finance{padding:12px}.worker-row{display:flex;align-items:center;justify-content:space-between;height:44px;border-top:1px solid #eee;font-size:8px}.worker-name{display:flex;gap:7px;align-items:center}.worker-actions button{border:1px solid #ddd;background:#fff;border-radius:5px;font-size:6px;padding:4px 7px}.worker-actions .approve-btn{background:#10aa58;color:#fff;border-color:#10aa58}.finance-row{height:35px;border-bottom:1px solid #f2e7e7;display:flex;justify-content:space-between;align-items:center;font-size:8px}.finance-row b{font-size:10px}.withdraw{width:100%;height:32px;border:0;border-radius:7px;background:var(--red);color:#fff;font-size:8px;font-weight:900;margin-top:10px}
+
+/* States */
+.states{padding:35px 55px;max-width:1100px;margin:auto}.states h2{font-size:17px;margin:0 0 4px}.states>p{font-size:8px;color:#888;margin:0 0 30px}.state-grid{display:grid;grid-template-columns:1fr 1fr;gap:27px}.state-label{font-size:7px;font-weight:900;color:#777;letter-spacing:.6px;margin-bottom:7px}.state-box{height:145px;background:#fff;border:1px solid #eee;border-radius:8px;display:flex;align-items:center;justify-content:center;text-align:center;padding:20px}.state-icon{font-size:25px;color:var(--red);margin-bottom:9px}.state-box b{display:block;font-size:10px}.state-box p{font-size:7px;line-height:1.5;color:#888;max-width:220px;margin:6px auto 9px}.state-box button{border:0;background:var(--red);color:#fff;border-radius:5px;padding:6px 12px;font-size:7px;font-weight:900}.loader{width:25px;height:25px;border:2px solid #eee;border-top-color:var(--red);border-radius:50%;margin:0 auto 10px}.modal-wrap{background:#f6e9e9;border-radius:7px;width:100%;height:145px;display:flex;align-items:center;justify-content:center}.modal{width:175px;background:#fff;border:1px solid #ddd;border-radius:6px;box-shadow:0 5px 15px #0002}.modal h4{font-size:7px;padding:8px;border-bottom:1px solid #eee;margin:0}.modal .modal-body{padding:12px;text-align:center;font-size:7px}.modal-actions{display:flex;gap:6px;padding:7px;border-top:1px solid #eee}.modal-actions button{flex:1;padding:5px;border:1px solid #ddd;background:#fff;border-radius:4px;font-size:6px}.modal-actions .confirm{background:var(--red);color:#fff;border-color:var(--red)}
+
+.view-switch{position:fixed;right:15px;bottom:15px;background:#222;color:#fff;border-radius:20px;padding:8px 12px;font-size:9px;z-index:20;display:none}
+body.mobile-mode .sidebar,body.mobile-mode .main>.topbar{display:none}body.mobile-mode .main{background:#fff}.mobile-mode .mobile-preview{display:block}.mobile-mode .view-switch{display:block}
+
+/* route visibility */
+#admin,#states{display:none}
+body.route-admin #agent{display:none}body.route-admin #admin{display:block}body.route-admin #states{display:none}
+body.route-states #agent{display:none}body.route-states #admin{display:none}body.route-states #states{display:block}
+
+@media(max-width:900px){
+ .sidebar{width:205px;flex-basis:205px}.grid4{grid-template-columns:1fr 1fr}.two{grid-template-columns:1fr}.admin-top{grid-template-columns:1fr 1fr}
+}
+@media(max-width:650px){
+ body:not(.route-admin):not(.route-states) .sidebar,
+ body:not(.route-admin):not(.route-states) .main>.topbar{display:none}
+ body:not(.route-admin):not(.route-states) .main{background:#fff}
+ body:not(.route-admin):not(.route-states) .mobile-preview{display:block}
+ .sidebar{display:none}.topbar{height:60px;padding:0 15px}.topbar h1{font-size:15px}.top-user-info{display:none}.page{padding:12px}.hero{padding:20px;display:block}.hero h2{font-size:20px}.hero p{font-size:9px}.hero button{margin-top:13px;width:100%}.grid4{grid-template-columns:1fr 1fr;gap:9px}.stat{height:100px}.stat b{font-size:16px;margin-top:13px}.stat small{font-size:6px}.two{margin-top:12px;gap:12px}.panel-head{height:43px}.states{padding:22px 15px}.state-grid{grid-template-columns:1fr;gap:16px}.admin-page{padding:10px}.admin-top{grid-template-columns:1fr 1fr}.admin-body,.admin-lower{grid-template-columns:1fr}.admin-page .review-row{min-width:560px}.review{overflow:auto}.desktop-only{display:none}
+}
+
+
+.admin-mobile{display:none}
+.am-head{height:48px;background:#fff;border-bottom:1px solid #eee;display:flex;align-items:center;gap:9px;padding:0 12px;font-size:13px}
+.am-head .logo{width:24px;height:24px}.am-head .logo-text{font-size:8px}.am-head .logo-sub{font-size:6px}.am-spacer{flex:1}
+.am-page{background:var(--pink);min-height:calc(100vh - 100px);padding:9px 9px 65px}
+.am-welcome{background:var(--red);color:#fff;border-radius:10px;padding:13px;margin-bottom:8px}.am-welcome h3{font-size:14px;margin:0}.am-welcome p{font-size:7px;margin:3px 0 10px}.am-welcome button{width:48%;height:26px;border:0;border-radius:5px;background:#fff;color:var(--red);font-size:7px;font-weight:900;margin-right:2%}
+.am-stats{display:grid;grid-template-columns:1fr 1fr;gap:7px}.am-stat{height:67px;padding:9px}.am-stat b{font-size:16px;display:block}.am-stat small{font-size:6px;color:#888}
+.am-panel{margin-top:8px;padding:11px}.am-title{font-size:9px;font-weight:900;margin-bottom:8px}.am-title span{float:right;color:var(--red);font-size:7px}
+.am-application{display:flex;align-items:center;gap:7px;padding:8px 0;border-top:1px solid #eee;font-size:7px}.am-application>div{flex:1}.am-application b{display:block;font-size:8px}.am-application small{color:#888;font-size:6px}.am-buttons{display:flex;gap:6px;margin:-2px 0 5px 35px}.am-buttons button{flex:1;height:23px;border:1px solid #ddd;border-radius:5px;background:#fff;font-size:6px}.am-buttons button:first-child{background:var(--red);color:#fff;border-color:var(--red)}
+.am-fin{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #f1e6e6;padding:8px 0;font-size:7px}.am-fin b{font-size:8px}.am-nav{position:fixed;bottom:0;left:0;right:0;height:52px;background:#fff;border-top:1px solid #eee;display:flex;justify-content:space-around;align-items:center;z-index:30}.am-nav div{text-align:center;font-size:14px;color:#888}.am-nav small{display:block;font-size:6px;margin-top:2px}.am-nav .active{color:var(--red)}
+@media(max-width:650px){
+ body.route-admin .main{display:none}
+ body.route-admin .admin-mobile{display:block}
+ body.route-states .topbar{height:60px}
+}
+</style>
+</head>
+<body>
+<div id="agent" class="app">
+  <aside class="sidebar">
+    <div class="brand"><div class="logo">▣</div><div><div class="logo-text">CITY BANK</div><div class="logo-sub">AGENT BANKING</div></div><div class="collapse">‹</div></div>
+    <nav class="nav">
+      <a class="nav-item active" href="?page=agent"><span class="nav-ico">▦</span>Dashboard</a>
+      <a class="nav-item" href="#"><span class="nav-ico">♧</span>Customers</a>
+      <a class="nav-item" href="#"><span class="nav-ico">♙</span>New Customer</a>
+      <a class="nav-item" href="#"><span class="nav-ico">↔</span>Transactions</a>
+      <a class="nav-item" href="#"><span class="nav-ico">◎</span>Targets</a>
+      <a class="nav-item" href="#"><span class="nav-ico">♔</span>Referrals</a>
+      <div class="nav-title">SETTINGS &amp; PROFILE</div>
+      <a class="nav-item" href="#"><span class="nav-ico">◉</span>My Profile</a>
+      <a class="nav-item" href="#"><span class="nav-ico">♧</span>Notifications</a>
+      <a class="nav-item" href="#"><span class="nav-ico">♧</span>Support Center</a>
+    </nav>
+    <div class="side-foot"><div class="person"><div class="avatar">RI</div><div><b>Rafiqul Islam</b><small>SENIOR AGENT</small></div></div><div class="logout">↪ &nbsp; Logout</div></div>
+  </aside>
+  <main class="main">
+    <header class="topbar"><h1>Dashboard</h1><div class="top-user"><div class="top-user-info"><b>Md. Rafiqul Islam</b><small>Branch: Amjhupi City</small></div><span class="bell">♧</span><span class="avatar">RI</span></div></header>
+    <section class="page">
+      <div class="hero"><div><h2>Welcome back, Rafiqul!</h2><p>You have collected 12 new customer documents this week. Keep up<br>the great work to reach your monthly target.</p></div><button>♙ &nbsp; Register New Customer</button></div>
+      <div class="grid4">
+        <div class="card stat"><div class="stat-head"><span class="ico">♧</span><span class="tag">↗ +12%</span></div><b>1,284</b><small>TOTAL CUSTOMERS</small></div>
+        <div class="card stat"><div class="stat-head"><span class="ico">◷</span><span class="tag orange">High Priority</span></div><b>142</b><small>RECOLLECTION REQUIRED</small></div>
+        <div class="card stat"><div class="stat-head"><span class="ico">▣</span><span class="tag">↗ +5.4%</span></div><b>৳38,420</b><small>TOTAL EARNED INCOME</small></div>
+        <div class="card stat"><div class="stat-head"><span class="ico">▣</span><span class="tag red">Withdraw</span></div><b>৳9,150</b><small>AVAILABLE BALANCE</small></div>
+      </div>
+      <div class="two">
+        <div class="card">
+          <div class="panel-head"><b>Recent Transactions</b><span class="redlink">View All</span></div>
+          <div class="table"><table><tr><th>CUSTOMER</th><th>TRANSACTION ID</th><th>AMOUNT</th><th>STATUS</th><th>DATE</th></tr>
+          <tr><td><div class="cust"><span class="init">SM</span>Sanaullah Munshi</div></td><td>TXN-8092415</td><td><b>৳5,000</b></td><td><span class="status ok">SUCCESS</span></td><td>May 24, 2026</td></tr>
+          <tr><td><div class="cust"><span class="init" style="background:#888">AK</span>Abul Kalam</div></td><td>TXN-8092414</td><td><b>৳1,200</b></td><td><span class="status pending">PENDING</span></td><td>May 24, 2026</td></tr>
+          <tr><td><div class="cust"><span class="init">RN</span>Rabeya Nasrin</div></td><td>TXN-8092412</td><td><b>৳2,500</b></td><td><span class="status ok">SUCCESS</span></td><td>May 23, 2026</td></tr>
+          <tr><td><div class="cust"><span class="init">JH</span>Jahir Hossain</div></td><td>TXN-8092410</td><td><b>৳10,000</b></td><td><span class="status failed">FAILED</span></td><td>May 23, 2026</td></tr></table></div>
+        </div>
+        <div class="card"><div class="panel-head"><b>Monthly Target</b></div><div class="target">
+          <div class="target-row"><span>Customer Registration</span><span class="pct">85%</span></div><div class="bar"><div class="fill" style="width:85%"></div></div><div class="note">17 / 20 customers registered this month</div>
+          <div class="target-row"><span>Document Collection</span><span class="pct">60%</span></div><div class="bar"><div class="fill" style="width:60%"></div></div><div class="note">12 / 20 documents verified</div>
+          <div class="target-row"><span>Referral Leads</span><span class="pct">40%</span></div><div class="bar"><div class="fill" style="width:40%"></div></div><div class="note">2 / 5 workers referred</div>
+          <button class="reward">♙ &nbsp; View Reward Program</button>
+        </div></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="mobile-preview">
+  <div class="mobile-head"><span class="menu">☰</span><div class="logo">▣</div><div><div class="logo-text">CITY BANK</div><div class="logo-sub">AGENT BANKING</div></div><span style="margin-left:auto">♧</span><span class="avatar" style="width:24px;height:24px">RI</span></div>
+  <div class="mobile-page">
+    <div class="mobile-welcome"><h3>স্বাগতম, রফিকুল ইসলাম!</h3><p>Welcome back, Rafiqul!</p><button>♙ &nbsp; নতুন গ্রাহক যোগ করুন</button></div>
+    <div class="mstats">
+      <div class="card mstat"><span class="ico">♧</span><b>১,২৮৪</b><small>TOTAL CUSTOMERS</small></div>
+      <div class="card mstat"><span class="ico">♧</span><b>১৪২</b><small>RECOLLECTION</small></div>
+      <div class="card mstat"><span class="ico">▣</span><b>৳৩৮,৪২০</b><small>TOTAL INCOME</small></div>
+      <div class="card mstat"><span class="ico">▣</span><b>৳৯,১৫০</b><small>AVAILABLE</small></div>
+    </div>
+    <div class="card m-panel"><h4>মাসিক লক্ষ্যমাত্রা (Monthly Target) <span style="float:right;color:var(--red)">85%</span></h4><div class="bar"><div class="fill" style="width:85%"></div></div><div class="note">গ্রাহক নিবন্ধন &nbsp;&nbsp;&nbsp; ১৭ / ২০ জন</div></div>
+    <div class="activity"><b style="font-size:10px">দ্রুত লিংক (Quick Links)</b><div class="quick"><button>♙<br>New Reg</button><button>☷<br>Customers</button><button>↻<br>History</button></div></div>
+    <div class="activity"><b style="font-size:10px">সাম্প্রতিক কার্যক্রম <span style="float:right;color:var(--red)">See All</span></b>
+      <div class="activity-item">◉ &nbsp; ডকুমেন্ট ভেরিফাই করা হয়েছে <span style="float:right;color:#888">২ মিনিট আগে</span></div>
+      <div class="activity-item">✓ &nbsp; নতুন গ্রাহক নিবন্ধন সম্পন্ন <span style="float:right;color:#888">১০ মিনিট আগে</span></div>
+      <div class="activity-item">♙ &nbsp; নতুন গ্রাহক যোগ করা হয়েছে <span style="float:right;color:#888">১ ঘণ্টা আগে</span></div>
+    </div>
+  </div>
+  <div class="bottom-nav"><div class="active"><i>⌂</i>Dashboard</div><div><i>♧</i>Customers</div><div><i>↔</i>Transactions</div><div><i>♙</i>Profile</div></div>
+</div>
+
+<section id="admin">
+  <div class="main">
+    <header class="topbar"><h1>Admin Control Center</h1><div class="top-user"><div class="top-user-info"><b>Maria Lawson</b><small>Super Admin</small></div><span class="bell">♧</span><span class="avatar">ML</span></div></header>
+    <div class="admin-page">
+      <div class="admin-top">
+        <div class="card admin-stat"><div class="line"><span>◷</span><b style="color:var(--orange);font-size:6px">ACTION REQUIRED</b></div><b>14</b><span style="font-size:7px;color:#888">PENDING WORKER APPROVALS</span></div>
+        <div class="card admin-stat"><div class="line"><span>▣</span><b style="color:var(--red);font-size:6px">NEW TODAY</b></div><b>128</b><span style="font-size:7px;color:#888">NEW APPLICATIONS</span></div>
+        <div class="card admin-stat"><div class="line"><span>✓</span><b style="color:var(--green);font-size:6px">TOTAL VERIFIED</b></div><b>1.2k</b><span style="font-size:7px;color:#888">COMPLETED ACCOUNTS</span></div>
+        <div class="card admin-stat"><div class="line"><span>♔</span><b style="color:var(--red);font-size:6px">PAYOUT READY</b></div><b>৳38k</b><span style="font-size:7px;color:#888">TOTAL REWARDS DISTRIBUTED</span></div>
+      </div>
+      <div class="card" style="margin-top:14px"><div class="panel-head"><b>Customer Application Review</b><span class="redlink">⌕ Search customer &nbsp; ▽</span></div><div class="review"><div class="review-row head"><span>CUSTOMER ID</span><span>WORKER / AGENT</span><span>CUSTOMER NAME</span><span>STATUS</span><span>DATE</span></div>
+        <div class="review-row"><span style="color:var(--red)">#FC-90412</span><span>◉ &nbsp;Daniél Hayes</span><span>Sofia Martinez</span><span class="pill reviewing">PENDING REVIEW</span><span>May 28, 2026</span></div>
+        <div class="review-row"><span style="color:var(--red)">#FC-90411</span><span>◉ &nbsp;Elena Vasquez</span><span>Marcus Johnson</span><span class="pill approve">APPROVED</span><span>May 27, 2026</span></div>
+      </div></div>
+      <div class="admin-lower">
+        <div class="card worker"><div class="panel-head" style="padding:0"><b>Worker Management</b><span class="redlink">View All Workers</span></div>
+          <div class="worker-row"><div class="worker-name"><span class="avatar">PS</span><span><b>Priya Sharma</b><br><small style="color:#888">2 hours ago</small></span></div><div class="worker-actions"><button class="approve-btn">Approve</button><button>Reject</button></div></div>
+          <div class="worker-row"><div class="worker-name"><span class="avatar">TM</span><span><b>Thomas Miller</b><br><small style="color:var(--green)">Status: ACTIVE</small></span></div><div class="worker-actions"><button>♙</button><button>♧</button></div></div>
+        </div>
+        <div class="card finance"><div class="panel-head" style="padding:0"><b>Financial Overview</b></div>
+          <div class="finance-row"><span>Total Net Commission</span><b>৳12,480.00</b></div><div class="finance-row"><span>Monthly Agent Bonuses</span><b style="color:var(--green)">৳1,200.00</b></div><div class="finance-row"><span>Pending Withdrawals</span><b style="color:var(--red)">৳4,500.00</b></div><button class="withdraw">▣ &nbsp; Process Withdrawal Batch</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<div class="admin-mobile">
+  <div class="am-head">
+    <span>☰</span><div class="logo">▣</div>
+    <div><div class="logo-text">CITY BANK</div><div class="logo-sub">MASTER ADMIN</div></div>
+    <span class="am-spacer"></span><span>♧</span><span class="avatar">ML</span>
+  </div>
+  <div class="am-page">
+    <div class="am-welcome"><h3>Admin Control Center</h3><p>Operational Overview &amp; Management</p><div><button>▣ Review Apps</button><button>▣ Announce</button></div></div>
+    <div class="am-stats">
+      <div class="card am-stat"><b>14</b><small>PENDING APPS</small></div>
+      <div class="card am-stat"><b>128</b><small>NEW APPS</small></div>
+      <div class="card am-stat"><b>1.2k</b><small>COMPLETED</small></div>
+      <div class="card am-stat"><b>৳38k</b><small>REWARDS</small></div>
+    </div>
+    <div class="card am-panel"><div class="am-title">Recent Applications <span>View All</span></div>
+      <div class="am-application"><span class="avatar">SM</span><div><b>Sofia Martinez</b><small>Customer ID: #FC-90412</small></div><span class="status pending">PENDING</span></div>
+      <div class="am-buttons"><button>Review</button><button>View Profile</button></div>
+      <div class="am-application"><span class="avatar">MJ</span><div><b>Marcus Johnson</b><small>Customer ID: #FC-90411</small></div><span class="status ok">APPROVED</span></div>
+    </div>
+    <div class="card am-panel"><div class="am-title">Finance Overview</div>
+      <div class="am-fin"><span>Total Referral Commissions</span><b style="color:var(--red)">৳12,480.00</b></div>
+      <div class="am-fin"><span>Bonuses Distributed</span><b style="color:var(--green)">৳1,200.00</b></div>
+      <div class="am-fin"><span>Available Liquidity</span><b>৳45,920.00</b></div>
+      <button class="withdraw">Withdrawal Requests (8)</button>
+    </div>
+    <div class="card am-panel"><div class="am-title">Quick Platform Settings</div>
+      <div class="am-fin"><span>Auto-approve Documents</span><b style="color:var(--red)">●</b></div>
+      <div class="am-fin"><span>Maintenance Mode</span><b style="color:#bbb">●</b></div>
+      <button class="reward">⚙ &nbsp; Full Settings</button>
+    </div>
+  </div>
+  <div class="am-nav"><div class="active">⌂<small>Overview</small></div><div>♙<small>Applications</small></div><div>♧<small>Workers</small></div><div>⚙<small>Profile</small></div></div>
+</div>
+
+<section id="states">
+  <div class="main">
+    <header class="topbar"><h1>UI States Reference</h1><div class="top-user"><span class="bell">♧</span><span class="avatar">UI</span></div></header>
+    <div class="states"><h2>UI States Reference</h2><p>Standardized states for Empty, Loading, Error, and Modals.</p>
+      <div class="state-grid">
+        <div><div class="state-label">EMPTY STATE</div><div class="state-box"><div><div class="state-icon">▱</div><b>No Applications Found</b><p>There are no documents or collection files pending for verification in your branch.</p><button>＋ Start New Application</button></div></div></div>
+        <div><div class="state-label">LOADING STATE</div><div class="state-box"><div><div class="loader"></div><b>Verifying Documents...</b><p>Please wait while our secure servers process the customer's biometric data.</p><div style="height:5px;background:#f4f4f4;border-radius:5px;margin:8px auto;width:190px"></div><div style="height:5px;background:#f4f4f4;border-radius:5px;margin:7px auto;width:155px"></div></div></div></div>
+        <div><div class="state-label">ERROR STATE</div><div class="state-box"><div><div class="state-icon">⚠</div><b style="color:var(--red)">Connection Failed</b><p>We couldn't connect to the City Bank central server. Please check your internet connection and try again.</p><button>Retry Connection</button></div></div></div>
+        <div><div class="state-label">MODAL COMPONENT</div><div class="modal-wrap"><div class="modal"><h4>Confirm Withdrawal <span style="float:right;color:#aaa">×</span></h4><div class="modal-body"><div style="color:var(--green);font-size:22px">✓</div><b>Are you sure you want to withdraw ৳8,020 to your linked bank account?</b><p style="font-size:6px;color:#999">This action cannot be undone.</p></div><div class="modal-actions"><button>Cancel</button><button class="confirm">Confirm</button></div></div></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<button class="view-switch" onclick="document.body.classList.remove('mobile-mode')">Desktop View</button>
+<script>
+(function(){
+  const p=new URLSearchParams(location.search).get('page')||'agent';
+  if(p==='admin') document.body.classList.add('route-admin');
+  if(p==='states') document.body.classList.add('route-states');
+  if(p==='mobile') document.body.classList.add('mobile-mode');
+})();
+</script>
+</body>
+</html>

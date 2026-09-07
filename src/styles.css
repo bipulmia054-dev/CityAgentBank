@@ -2070,7 +2070,7 @@ header { background: #fff; border-bottom: 1px solid #f1e9e9; }
 .workerPortal .portalHero h1, .adminPortal .adminHero h1 { margin: 0 0 4px; color: #fff; font-size: 21px; }
 .workerPortal .portalHero p, .adminPortal .adminHero p { color: #fff; font-size: 10px; }
 .workerPortal .portalHero small, .adminPortal .adminHero small { color: #fff; font-size: 8px; }
-.workerPortal .portalHero .primary { background: #fff !important; color: var(--ref-red) !important; box-shadow: none !important; font-size: 10px; padding: 8px 12px; }
+.workerPortal .portalHero .primary { box-shadow: none; font-size: 14px; padding: 12px 16px; }
 .metricGrid { gap: 9px; margin: 0 16px 16px; }
 .metricGrid article { min-height: 75px; padding: 12px; border: 1px solid var(--ref-line); border-radius: 9px; background: #fff; box-shadow: none; grid-template-columns: 25px 1fr; gap: 2px 8px; }
 .metricGrid svg { width: 25px; height: 25px; padding: 6px; border-radius: 6px; background: #fff0f1; color: var(--ref-red); }
@@ -2816,3 +2816,6 @@ body { background:linear-gradient(135deg,#fff,#f8f8f9 55%,#fff4f4); color:var(--
   .portalSidebar nav button.active::before { left: -12px; top: 9px; bottom: 9px; }
   .portalSidebar .sideFiles { min-height: 44px; height: 44px; margin-top: auto; border-radius: 9px; }
 }
+
+@font-face {font-family:"Noto Sans Bengali";src:url("/fonts/NotoSansBengali-Regular.ttf") format("truetype");font-weight:400;font-display:swap;}
+.loadingPage {min-height:100dvh;display:flex;align-items:center;justify-content:center;gap:16px;font-size:18px;background:#f5f7fa;}

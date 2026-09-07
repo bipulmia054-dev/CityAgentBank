@@ -5,7 +5,7 @@
   <header><div><strong>Document Studio</strong><small>Customer details • পাশে খোলা থাকবে</small></div><button id="close" aria-label="Close panel">✕</button></header>
   <main>
     <div id="notice" role="status" aria-live="polite"></div>
-    <details id="settings"><summary>Server settings</summary><form id="server-form"><label>Server address<input id="server" type="url" required spellcheck="false"></label><button>Save & Connect</button><p>PC/server চালু রাখুন। বাইরে থেকে Tailscale প্রয়োজন।</p></form></details>
+    <p class="serverAddress">Server: https://abmgroup.tech</p>
     <section id="login" hidden><h2>Login করুন</h2><p>Document Studio-এর username/password ব্যবহার করুন।</p><form id="login-form"><label>Username<input id="username" autocomplete="username" required></label><label>Password<input id="password" type="password" autocomplete="current-password" required></label><button id="login-button">Login</button></form></section>
     <section id="workspace" hidden>
       <div class="session"><span id="user"></span><button id="logout" class="quiet">Logout</button></div>

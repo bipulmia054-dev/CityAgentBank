@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#e21b23">
+  <title>City Bank Agent Banking - Dashboard</title>
+  <link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=Manrope:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --red: #e21b23;
+      --red-dark: #bd1118;
+      --pink: #fff1f2;
+      --line: #eadedf;
+      --ink: #292529;
+      --muted: #817579;
+      --green: #1c9b62;
+      --yellow: #c88912;
+      --white: #fff;
+    }
+    body {
+      font-family: "Hind Siliguri", sans-serif;
+      background: #fff;
+      color: var(--ink);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .app { display: flex; flex-direction: column; min-height: 100vh; }
+    header {
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      border-bottom: 1px solid #f1e9e9;
+      background: #fff;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .brand { display: flex; align-items: center; gap: 8px; }
+    .logo { width: 32px; height: 32px; background: var(--red); border-radius: 6px; display: grid; place-items: center; color: #fff; font: 700 16px/1 Manrope, sans-serif; }
+    .brand-text { display: flex; flex-direction: column; }
+    .brand-text b { font-size: 13px; color: var(--ink); }
+    .brand-text small { font-size: 7px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+    .header-actions { display: flex; align-items: center; gap: 8px; }
+    .icon-btn { width: 32px; height: 32px; border: 0; background: #fff; border-radius: 6px; display: grid; place-items: center; color: var(--red); }
+    .icon-btn svg { width: 18px; height: 18px; }
+    main { flex: 1; overflow-y: auto; padding: 16px; padding-bottom: 100px; }
+    .welcome { margin-bottom: 16px; }
+    .welcome small { display: block; font-size: 11px; color: var(--muted); margin-bottom: 2px; }
+    .welcome h1 { font: 700 22px/1.2 Manrope, sans-serif; color: var(--ink); }
+    .metric-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+    .metric-card { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+    .metric-card .icon { width: 36px; height: 36px; border-radius: 8px; background: var(--pink); display: grid; place-items: center; color: var(--red); margin-bottom: 8px; }
+    .metric-card .icon svg { width: 18px; height: 18px; }
+    .metric-card .label { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; }
+    .metric-card .value { font: 700 20px/1.2 Manrope, sans-serif; color: var(--ink); }
+    .metric-card .sub { font-size: 10px; color: var(--muted); margin-top: 2px; }
+    .metric-card.withdraw { display: flex; flex-direction: column; justify-content: space-between; }
+    .withdraw-btn { width: 100%; padding: 10px; border: 0; border-radius: 8px; background: var(--red); color: #fff; font: 600 12px/1 Hind Siliguri, sans-serif; }
+    .section-title { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin: 8px 0 12px; }
+    .target-card { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-bottom: 10px; }
+    .target-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+    .target-head .icon { width: 28px; height: 28px; border-radius: 6px; background: var(--pink); display: grid; place-items: center; color: var(--red); }
+    .target-head .icon svg { width: 14px; height: 14px; }
+    .target-info { display: flex; flex-direction: column; gap: 2px; }
+    .target-info .name { font: 600 13px/1 Hind Siliguri, sans-serif; color: var(--ink); }
+    .target-info .progress-text { font-size: 10px; color: var(--muted); }
+    .target-progress { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+    .progress-bar { flex: 1; height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
+    .progress-fill { height: 100%; background: var(--red); border-radius: 3px; }
+    .progress-pct { font: 700 12px/1 Manrope, sans-serif; color: var(--red); min-width: 36px; text-align: right; }
+    .reward-btn { width: 100%; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: #fff; color: var(--red); font: 600 13px/1 Hind Siliguri, sans-serif; margin-top: 8px; }
+    .bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; background: #fff; border-top: 1px solid var(--line); padding: 6px 8px 8px; display: grid; grid-template-columns: repeat(4, 1fr); z-index: 20; }
+    .nav-item { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0; color: var(--muted); font-size: 8px; font-weight: 600; }
+    .nav-item svg { width: 20px; height: 20px; }
+    .nav-item.active { color: var(--red); }
+    .nav-item.more { position: relative; }
+    .more-menu { position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 8px; margin-bottom: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.1); display: none; min-width: 180px; }
+    .more-menu.open { display: block; }
+    .more-section { padding: 8px 0; border-bottom: 1px solid var(--line); }
+    .more-section:last-child { border-bottom: 0; }
+    .more-section-title { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 6px; padding: 0 8px; }
+    .more-item { display: flex; align-items: center; gap: 10px; padding: 10px 8px; color: var(--ink); font-size: 12px; font-weight: 500; border-radius: 8px; }
+    .more-item:hover { background: var(--pink); color: var(--red); }
+    .more-item svg { width: 18px; height: 18px; color: var(--red); }
+    .more-item.logout { color: var(--red); }
+    .user-info { display: flex; align-items: center; gap: 10px; padding: 8px; }
+    .avatar { width: 36px; height: 36px; border-radius: 50%; background: var(--red); color: #fff; display: grid; place-items: center; font: 700 14px/1 Manrope, sans-serif; }
+    .user-detail { flex: 1; }
+    .user-name { font: 600 13px/1 Hind Siliguri, sans-serif; color: var(--ink); }
+    .user-role { font-size: 9px; color: var(--muted); }
+    .hidden { display: none !important; }
+    .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 15; opacity: 0; visibility: hidden; transition: .2s; }
+    .overlay.open { opacity: 1; visibility: visible; }
+    @media (max-width: 360px) {
+      .metric-card .value { font-size: 18px; }
+      .target-info .name { font-size: 12px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div class="brand">
+        <div class="logo">C</div>
+        <div class="brand-text">
+          <b>City Bank</b>
+          <small>Agent Banking</small>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button class="icon-btn" aria-label="Notifications">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        </button>
+        <button class="icon-btn menu-toggle" aria-label="Menu">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <main>
+      <div class="welcome">
+        <small>Welcome back,</small>
+        <h1>Rafiqul Islam</h1>
+      </div>
+
+      <div class="metric-grid">
+        <div class="metric-card">
+          <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
+          <div class="label">Total Customers</div>
+          <div class="value">1,284</div>
+        </div>
+        <div class="metric-card">
+          <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 14.24 3c-.25 0-.52.02-.79.05 1.02.63 1.71 1.77 2.05 3.03A12 12 0 0 1 21 12.79z"/></svg></div>
+          <div class="label">Recollection Required</div>
+          <div class="value">142</div>
+        </div>
+        <div class="metric-card">
+          <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
+          <div class="label">Total Earned Income</div>
+          <div class="value">৳38,420</div>
+        </div>
+        <div class="metric-card withdraw">
+          <div>
+            <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg></div>
+            <div class="label">Available Balance</div>
+            <div class="value">৳9,150</div>
+          </div>
+          <button class="withdraw-btn">Withdraw</button>
+        </div>
+      </div>
+
+      <div class="section-title">Monthly Target</div>
+
+      <div class="target-card">
+        <div class="target-head">
+          <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></div>
+          <div class="target-info">
+            <div class="name">Customer Registration</div>
+            <div class="progress-text">17 / 20 customers registered this month</div>
+          </div>
+        </div>
+        <div class="target-progress">
+          <div class="progress-bar"><div class="progress-fill" style="width: 85%"></div></div>
+          <span class="progress-pct">85%</span>
+        </div>
+      </div>
+
+      <div class="target-card">
+        <div class="target-head">
+          <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></div>
+          <div class="target-info">
+            <div class="name">Document Collection</div>
+            <div class="progress-text">12 / 20 documents verified</div>
+          </div>
+        </div>
+        <div class="target-progress">
+          <div class="progress-bar"><div class="progress-fill" style="width: 60%"></div></div>
+          <span class="progress-pct">60%</span>
+        </div>
+      </div>
+
+      <div class="target-card">
+        <div class="target-head">
+          <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
+          <div class="target-info">
+            <div class="name">Referral Leads</div>
+            <div class="progress-text">2 / 5 workers referred</div>
+          </div>
+        </div>
+        <div class="target-progress">
+          <div class="progress-bar"><div class="progress-fill" style="width: 40%"></div></div>
+          <span class="progress-pct">40%</span>
+        </div>
+      </div>
+
+      <button class="reward-btn">View Reward Program</button>
+    </main>
+
+    <nav class="bottom-nav" role="navigation" aria-label="Main navigation">
+      <button class="nav-item active" aria-label="Dashboard" aria-current="page">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        <span>Dashboard</span>
+      </button>
+      <button class="nav-item" aria-label="Customers">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <span>Customers</span>
+      </button>
+      <button class="nav-item" aria-label="Transactions">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        <span>Transactions</span>
+      </button>
+      <button class="nav-item more" aria-label="More" aria-expanded="false" aria-haspopup="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+        <span>More</span>
+        <div class="more-menu" role="menu">
+          <div class="more-section">
+            <div class="more-section-title">Targets & Referrals</div>
+            <button class="more-item" role="menuitem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg><span>Targets</span></button>
+            <button class="more-item" role="menuitem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>Referrals</span></button>
+          </div>
+          <div class="more-section">
+            <div class="more-section-title">Settings & Profile</div>
+            <button class="more-item" role="menuitem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2"/><path d="M12 21v2"/><path d="M4.22 4.22l1.42 1.42"/><path d="M18.36 18.36l1.42 1.42"/><path d="M1 12h2"/><path d="M21 12h2"/><path d="M4.22 19.78l1.42-1.42"/><path d="M18.36 5.64l1.42-1.42"/></svg><span>My Profile</span></button>
+            <button class="more-item" role="menuitem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span>Notifications</span></button>
+            <button class="more-item" role="menuitem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg><span>Support Center</span></button>
+          </div>
+          <div class="more-section">
+            <div class="user-info">
+              <div class="avatar">R</div>
+              <div class="user-detail">
+                <div class="user-name">Rafiqul Islam</div>
+                <div class="user-role">SENIOR AGENT</div>
+              </div>
+            </div>
+            <button class="more-item logout" role="menuitem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg><span>Logout</span></button>
+          </div>
+        </div>
+      </button>
+    </nav>
+
+    <div class="overlay" aria-hidden="true"></div>
+  </div>
+
+  <script>
+    const menuToggle = document.querySelector('.menu-toggle');
+    const moreBtn = document.querySelector('.nav-item.more');
+    const moreMenu = document.querySelector('.more-menu');
+    const overlay = document.querySelector('.overlay');
+
+    function closeAll() {
+      moreMenu.classList.remove('open');
+      moreBtn.setAttribute('aria-expanded', 'false');
+      overlay.classList.remove('open');
+    }
+
+    menuToggle?.addEventListener('click', () => {
+      alert('Sidebar toggle - would open left drawer in full app');
+    });
+
+    moreBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isOpen = moreMenu.classList.toggle('open');
+      moreBtn.setAttribute('aria-expanded', isOpen);
+      overlay.classList.toggle('open', isOpen);
+    });
+
+    overlay?.addEventListener('click', closeAll);
+
+    document.querySelectorAll('.more-item').forEach(item => {
+      item.addEventListener('click', () => {
+        if (item.classList.contains('logout')) {
+          if (confirm('Logout from City Bank Agent Banking?')) {
+            alert('Logged out');
+          }
+        } else {
+          alert(`Navigate to: ${item.textContent.trim()}`);
+        }
+        closeAll();
+      });
+    });
+
+    document.querySelector('.withdraw-btn')?.addEventListener('click', () => {
+      alert('Withdrawal flow would open here');
+    });
+
+    document.querySelector('.reward-btn')?.addEventListener('click', () => {
+      alert('Reward Program page would open here');
+    });
+
+    document.querySelectorAll('.metric-card:not(.withdraw)').forEach(card => {
+      card.addEventListener('click', () => {
+        const label = card.querySelector('.label')?.textContent;
+        alert(`Navigate to ${label} details`);
+      });
+    });
+
+    document.querySelectorAll('.target-card').forEach(card => {
+      card.addEventListener('click', () => {
+        const name = card.querySelector('.name')?.textContent;
+        alert(`Navigate to ${name} details`);
+      });
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeAll();
+    });
+  </script>
+</body>
+</html>
