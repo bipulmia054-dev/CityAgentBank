@@ -247,8 +247,7 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if route == "/api/customers": return self.save_customer()
         if route == "/api/gemini-scan":
-            if self.is_admin(): return self.gemini_scan()
-            return self.reply(403, {"error":"AI processing শুধু Admin করতে পারবেন"})
+            if self.authorized(): return self.gemini_scan()
             return
         if route == "/api/gemini-description":
             if self.is_admin(): return self.gemini_description()

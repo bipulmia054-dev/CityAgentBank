@@ -976,9 +976,11 @@ function nativeDocumentScan() {
   });
 }
 const CollectionOnly = React.createContext(false);
+const WorkerRoleContext = React.createContext(false);
 function Capture(props) {
   const raw = React.useContext(CollectionOnly);
-  return raw ? <RawCapture {...props}/> : <ProcessedCapture {...props}/>;
+  const isWorker = React.useContext(WorkerRoleContext);
+  return (raw || (props.passport && isWorker)) ? <RawCapture {...props}/> : <ProcessedCapture {...props}/>;
 }
 function RawCapture({title,value,onChange}) {
   const [busy,setBusy]=useState(false);
@@ -2999,7 +3001,9 @@ function App() {
     onNavigate: setStep,
   };
   return (
-    <CollectionOnly.Provider value={auth.role === "worker"}><PageFrame {...frameProps}>
+    <CollectionOnly.Provider value={false}>
+      <WorkerRoleContext.Provider value={auth?.role === "worker"}>
+        <PageFrame {...frameProps}>
       {confirmClear && <div className="modalBackdrop"><section className="settingsModal" role="dialog" aria-modal="true" aria-label="Clear draft confirmation"><h2>চলমান Draft Clear করবেন?</h2><p>সব scan, ছবি ও অসম্পূর্ণ details মুছে যাবে। Server-এ জমা দেওয়া ফাইল থাকবে।</p><button className="primary" onClick={clearCurrentDraft}>Clear all draft data</button><button className="secondary" onClick={()=>setConfirmClear(false)}>Cancel</button></section></div>}
       {isAdminRole(auth.role) && <ApiSettings open={showSettings} onClose={() => setShowSettings(false)} />}
       <div className="appPageContents">
@@ -3605,7 +3609,9 @@ function App() {
           </div>
         )}
       </div>
-    </PageFrame></CollectionOnly.Provider>
+        </PageFrame>
+      </WorkerRoleContext.Provider>
+    </CollectionOnly.Provider>
   );
 }
 createRoot(document.getElementById("root")).render(<App />);
