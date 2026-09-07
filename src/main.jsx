@@ -984,6 +984,8 @@ function Capture(props) {
 }
 function RawCapture({title,value,onChange}) {
   const [busy,setBusy]=useState(false);
+  const ref = useRef();
+  const galleryRef = useRef();
   async function select(event) {
     const file=event.target.files?.[0]; if(!file)return;
     setBusy(true);
@@ -991,7 +993,38 @@ function RawCapture({title,value,onChange}) {
     catch { alert("ছবি খোলা যায়নি। আবার নির্বাচন করুন।"); }
     finally {setBusy(false);event.target.value="";}
   }
-  return <section className="capture"><h4>{title}</h4>{value&&<img src={value} alt={title} style={{maxWidth:"100%",maxHeight:200,objectFit:"contain"}}/>}<label>ক্যামেরা<input type="file" accept="image/*" capture="environment" disabled={busy} onChange={select}/></label><label>গ্যালারি<input type="file" accept="image/*" disabled={busy} onChange={select}/></label>{busy&&<p>ছবি যোগ হচ্ছে…</p>}</section>;
+  return (
+    <div className={"capture " + (value ? "has " : "")}>
+      <input hidden ref={ref} type="file" accept="image/*" capture="environment" disabled={busy} onChange={select} />
+      <input hidden ref={galleryRef} type="file" accept="image/*" disabled={busy} onChange={select} />
+      {value ? (
+        <>
+          <img src={value} />
+          <button className="x" onClick={() => onChange(null)}>
+            <X size={15} />
+          </button>
+          <div className="replaceActions">
+            <button className="retake" onClick={() => ref.current?.click()}>
+              <RotateCcw size={14} /> আবার তুলুন
+            </button>
+            <button className="galleryReplace" onClick={() => galleryRef.current?.click()}>
+              <ImagePlus size={14} /> Gallery
+            </button>
+          </div>
+        </>
+      ) : (
+        <div className="captureChoices">
+          <button className="captureButton" onClick={() => ref.current?.click()}>
+            <Camera />
+            <b>{busy ? "ছবি যোগ হচ্ছে…" : title}</b>
+          </button>
+          <button className="galleryButton" onClick={() => galleryRef.current?.click()}>
+            <ImagePlus size={18} /> Gallery থেকে নিন
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }
 function ProcessedCapture({
   title,
