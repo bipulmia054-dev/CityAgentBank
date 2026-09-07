@@ -13,6 +13,8 @@ ROOT = Path(__file__).resolve().parent
 APP_DIR, DATA_DIR = ROOT / "app", Path(os.environ.get("DATA_DIR", str(ROOT / "data"))).resolve()
 ARCHIVE_DIR, DB_PATH = DATA_DIR / "customers", DATA_DIR / "document_studio.db"
 APP_DIR = ROOT / "dist" / "client"
+if not APP_DIR.exists():
+    APP_DIR = ROOT
 PORT = int(os.environ.get("PORT", "8765"))
 SESSION_DAYS = 30
 
@@ -210,7 +212,7 @@ class Handler(SimpleHTTPRequestHandler):
             try: customer_id = int(route.path.split("/")[3])
             except (ValueError, IndexError): return self.reply(400, {"error": "Invalid customer"})
             with db() as con: row = con.execute("SELECT archive_path,case_json FROM customers WHERE id=?", (customer_id,)).fetchone()
-            if not row: return self.reply(404, {"error": "Customer পাওয়া যায়নি"})
+            if not row: return self.reply(404, {"error": "Customer পাওয়া যায়নি"})
             if row["case_json"]:
                 try: return self.reply(200, {"case": json.loads(row["case_json"]), "customerId": customer_id})
                 except Exception: pass
