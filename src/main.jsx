@@ -2201,7 +2201,7 @@ function Access({ setupRequired, onAccess }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [mode, setMode] = useState("login");
-  const [registration, setRegistration] = useState(()=>({fullName:"",nidNumber:"",phone:"",email:"",address:"",referralCode:new URLSearchParams(location.search).get("ref")?.toUpperCase()||"",nidFront:"",nidBack:"",selfie:""}));
+  const [registration, setRegistration] = useState(()=>({fullName:"",phone:"",email:"",referralCode:new URLSearchParams(location.search).get("ref")?.toUpperCase()||""}));
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   async function submit(e) {
@@ -2218,7 +2218,7 @@ function Access({ setupRequired, onAccess }) {
           body: JSON.stringify(registering ? {...registration,username,password} : { username, password }),
         },
       );
-      const result = await response.json();
+      const result = await readJson(response);
       if (!response.ok) throw new Error(result.error);
       if (registering) { setMode("login"); setError(result.message); setPassword(""); }
       else onAccess(result);
@@ -2237,12 +2237,11 @@ function Access({ setupRequired, onAccess }) {
         <p>
           {setupRequired
             ? "প্রথমবার ব্যবহারের জন্য নিজের username ও password দিন।"
-            : mode === "register" ? "তথ্য ও পরিচয়পত্র জমা দিন। Admin approve করলে login করতে পারবেন।" : "নিজের username ও password দিয়ে Login করুন।"}
+            : mode === "register" ? "নাম ও যোগাযোগের তথ্য জমা দিন। Admin approve করলে login করতে পারবেন।" : "নিজের username ও password দিয়ে Login করুন।"}
         </p>
         {!setupRequired && <div className="accessTabs"><button type="button" className={mode==="login"?"active":""} onClick={()=>{setMode("login");setError("")}}>Login</button><button type="button" className={mode==="register"?"active":""} onClick={()=>{setMode("register");setError("")}}>Worker Registration</button></div>}
         {mode === "register" && !setupRequired && <div className="registrationFields">
-          {[["fullName","পূর্ণ নাম"],["nidNumber","NID number"],["phone","Mobile number"],["email","Email (optional)"],["address","বর্তমান ঠিকানা"],["referralCode","Referral code (required)"]].map(([key,label])=><label key={key}><span>{label}</span><input value={registration[key]} onChange={e=>setRegistration({...registration,[key]:key==="referralCode"?e.target.value.toUpperCase():e.target.value})} required={!["email","address"].includes(key)}/></label>)}
-          <div className="registrationUploads"><RegistrationImage label="NID Front" value={registration.nidFront} onChange={v=>setRegistration({...registration,nidFront:v})}/><RegistrationImage label="NID Back" value={registration.nidBack} onChange={v=>setRegistration({...registration,nidBack:v})}/><RegistrationImage label="নিজের Selfie" value={registration.selfie} onChange={v=>setRegistration({...registration,selfie:v})}/></div>
+          {[["fullName","পূর্ণ নাম"],["phone","Mobile number"],["email","Email (optional)"],["referralCode","Referral code (required)"]].map(([key,label])=><label key={key}><span>{label}</span><input value={registration[key]} onChange={e=>setRegistration({...registration,[key]:key==="referralCode"?e.target.value.toUpperCase():e.target.value})} required={!["email","address"].includes(key)}/></label>)}
         </div>}
         <label>
           <span>Username</span>
