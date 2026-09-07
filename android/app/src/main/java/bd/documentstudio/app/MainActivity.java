@@ -33,8 +33,6 @@ public class MainActivity extends ComponentActivity {
     private String pendingDownload, pendingCookie;
     private boolean pageFailed;
     private LinearLayout loading;
-    private float touchX, touchY;
-    private boolean pullCandidate;
     private static final String SERVER = "https://citybank.abmgroup.tech/";
     private final java.util.concurrent.ExecutorService io = Executors.newSingleThreadExecutor();
     private ActivityResultLauncher<IntentSenderRequest> scannerLauncher;
@@ -109,19 +107,8 @@ public class MainActivity extends ComponentActivity {
         status = new TextView(this); status.setGravity(android.view.Gravity.CENTER); status.setTextColor(Color.rgb(32,42,56)); status.setTextSize(18); status.setPadding(16,24,16,16); status.setText("City Amjhupi লোড হচ্ছে…"); loading.addView(status);
         Button retry = new Button(this); retry.setText("আবার লোড করুন"); retry.setOnClickListener(v -> reloadCurrentPage()); loading.addView(retry);
         content.addView(loading, new android.widget.FrameLayout.LayoutParams(-1,-1)); setContentView(root);
-        web.setOnTouchListener((view, event) -> {
-            if(event.getActionMasked()==android.view.MotionEvent.ACTION_DOWN) {touchX=event.getX();touchY=event.getY();pullCandidate=!web.canScrollVertically(-1);}
-            if(event.getPointerCount()>1) pullCandidate=false;
-            if(event.getActionMasked()==android.view.MotionEvent.ACTION_UP) {
-                float density=getResources().getDisplayMetrics().density;
-                boolean refresh=pullCandidate&&!web.canScrollVertically(-1)&&event.getY()-touchY>120*density&&Math.abs(event.getX()-touchX)<70*density;
-                pullCandidate=false;
-                if(refresh){view.performClick();reloadCurrentPage();return true;}
-            }
-            if(event.getActionMasked()==android.view.MotionEvent.ACTION_CANCEL)pullCandidate=false;
-            return false;
-        });
         WebSettings config = web.getSettings(); config.setJavaScriptEnabled(true); config.setDomStorageEnabled(true);
+        web.addJavascriptInterface(new Object() { @android.webkit.JavascriptInterface public void reload() { runOnUiThread(() -> reloadCurrentPage()); } }, "DocumentStudioAndroid");
         config.setAllowFileAccess(false); config.setAllowContentAccess(false); config.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         config.setUserAgentString(config.getUserAgentString() + " DocumentStudioAndroid/2");
         CookieManager.getInstance().setAcceptCookie(true); CookieManager.getInstance().setAcceptThirdPartyCookies(web, false);
@@ -185,7 +172,12 @@ public class MainActivity extends ComponentActivity {
             } else download(url, URLUtil.guessFileName(url, disposition, mime));
         });
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
-            @Override public void handleOnBackPressed() { if (web.canGoBack()) web.goBack(); else { rememberPage(); finish(); } }
+            @Override public void handleOnBackPressed() {
+                if (!trusted(web.getUrl())) { rememberPage(); finish(); return; }
+                web.evaluateJavascript("window.documentStudioGoBack ? window.documentStudioGoBack() : false", handled -> {
+                    if (!"true".equals(handled)) { rememberPage(); finish(); }
+                });
+            }
         });
         String lastUrl=getPreferences(0).getString("lastUrl",server);
         web.loadUrl(trusted(lastUrl)?lastUrl:server);

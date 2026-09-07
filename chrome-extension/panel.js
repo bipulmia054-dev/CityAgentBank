@@ -47,13 +47,21 @@ async function search() {
 function fields(container, values) {
   const list = document.createElement('dl');
   for (const [label, value] of values) {
+    const copyValue = /date|dob|birth|issue|expiry/i.test(label) ? ddmmyyyy(value) : value;
     const field = document.createElement('div'); field.className = 'field';
     const dt = document.createElement('dt'); dt.textContent = label;
-    const dd = document.createElement('dd'), text = document.createElement('span'); text.textContent = value || 'দেওয়া নেই'; if (!value) text.className = 'missing'; dd.append(text);
-    if (value) { const copy = document.createElement('button'); copy.className = 'copy'; copy.textContent = 'Copy'; copy.setAttribute('aria-label', label + ' copy'); copy.addEventListener('click', async () => { try { await navigator.clipboard.writeText(value); copy.textContent = '✓'; setTimeout(() => copy.textContent = 'Copy', 1000); } catch { notice('Copy হয়নি—লেখাটি select করে Ctrl+C করুন।', true); } }); dd.append(copy); }
+    const dd = document.createElement('dd'), text = document.createElement('span'); text.textContent = copyValue || 'দেওয়া নেই'; if (!copyValue) text.className = 'missing'; dd.append(text);
+    if (copyValue) { const copy = document.createElement('button'); copy.className = 'copy'; copy.textContent = 'Copy'; copy.setAttribute('aria-label', label + ' copy'); copy.addEventListener('click', async () => { try { await navigator.clipboard.writeText(copyValue); copy.textContent = '✓'; setTimeout(() => copy.textContent = 'Copy', 1000); } catch { notice('Copy হয়নি—লেখাটি select করে Ctrl+C করুন।', true); } }); dd.append(copy); }
     field.append(dt, dd); list.append(field);
   }
   container.append(list);
+}
+function ddmmyyyy(value) {
+  const text = String(value || '').trim();
+  const iso = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:T.*)?$/);
+  if (iso) return `${iso[3].padStart(2,'0')}/${iso[2].padStart(2,'0')}/${iso[1]}`;
+  const slash = text.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+  return slash ? `${slash[1].padStart(2,'0')}/${slash[2].padStart(2,'0')}/${slash[3]}` : text;
 }
 function downloadBlob(blob, name) {
   const url = URL.createObjectURL(blob); blobs.add(url);
@@ -112,7 +120,7 @@ async function signatureCards() {
   let section=document.getElementById('signature-cards');
   if(!section){section=document.createElement('section');section.id='signature-cards';$('record-content').append(section);}
   section.replaceChildren();const title=document.createElement('h3');title.textContent='Signed Signature Card';section.append(title);
-  if(!result.documents?.length){const p=document.createElement('p');p.textContent='Admin card upload করলে এখানে স্বয়ংক্রিয়ভাবে দেখা যাবে।';section.append(p);}
+  if(!result.documents?.length){const p=document.createElement('p');p.textContent='Admin card upload করলে এখানে স্বয়ংক্রিয়ভাবে দেখা যাবে।';const reload=document.createElement('button');reload.textContent='Signature Card Reload';reload.addEventListener('click',async()=>{reload.disabled=true;try{await signatureCards();}catch(error){showError(error);}finally{reload.disabled=false;}});section.append(p,reload);}
   for(const doc of result.documents||[])for(const [i,page] of (doc.pages||[]).entries())photo(section,page,`Signature Card ${i+1}`);
 }
 async function declarationCard(caseData) {
@@ -157,7 +165,7 @@ setInterval(async()=>{
   polling=true;
   const id=selected.id;
   try{const result=await api(`/api/customers/${id}/revision`);if(selected?.id===id&&result.revision!==lastSeenRevision){await signatureCards();lastSeenRevision=result.revision;if(!declarationDirty){notice('ফাইল আপডেট হয়েছে—সর্বশেষ Signature Card দেখানো হচ্ছে। অন্য details দেখতে ফাইল আবার খুলুন।');}else{notice('Server-এ file update হয়েছে। আপনার edit রাখা আছে; Save conflict হলে নতুন file খুলুন।');}}}catch(error){showError(error);}finally{polling=false;}
-},5000);
+},1000);
 $('search-form').addEventListener('submit', event => { event.preventDefault(); search(); });
 $('back').addEventListener('click', () => { requestVersion++; selected = null; $('record').hidden = true; $('record-content').replaceChildren(); $('results').hidden = false; notice(); });
 $('login-form').addEventListener('submit', async event => {

@@ -2675,6 +2675,14 @@ function WorkerDetailsModal({ data, close, refresh }) {
 function WorkerDashboard({ startNew, actions }) {
   const [page,setPage]=useState(()=>readPage("worker", "dashboard")),[data,setData]=useState(null),[rows,setRows]=useState([]),[ledger,setLedger]=useState({transactions:[],withdrawals:[]}),[withdrawForm,setWithdrawForm]=useState({amount:""}),[bankForm,setBankForm]=useState({accountName:"",accountNumber:"",branch:""}),[selected,setSelected]=useState(null),[profile,setProfile]=useState(null),[announcements,setAnnouncements]=useState([]),[showAnnouncement,setShowAnnouncement]=useState(true);
   useEffect(() => { writePage("worker", page); }, [page]);
+  useEffect(() => {
+    window.documentStudioPortalGoBack = () => {
+      if (page === "dashboard") return false;
+      setPage("dashboard");
+      return true;
+    };
+    return () => { delete window.documentStudioPortalGoBack; };
+  }, [page]);
   const load=async()=>{const [a,b,c,d]=await Promise.all([fetch("/api/worker/dashboard"),fetch("/api/worker/customers"),fetch("/api/worker/transactions"),fetch("/api/worker/announcements")]);const [da,dbb,dc,dd]=await Promise.all([readJson(a),readJson(b),readJson(c),readJson(d)]);if(!a.ok)throw new Error(da.error);if(!b.ok)throw new Error(dbb.error);if(!c.ok)throw new Error(dc.error);setData(da);setRows(dbb.customers||[]);setLedger(dc);setAnnouncements(dd.announcements||[]);};
   const loadProfile=async()=>{const response=await fetch("/api/worker/profile"),result=await readJson(response);if(!response.ok)throw new Error(result.error);setProfile(result.profile);};
   useEffect(()=>{load().catch(e=>alert(e.message));},[]);
@@ -2687,7 +2695,7 @@ function WorkerDashboard({ startNew, actions }) {
   const copyReferral=async()=>{await navigator.clipboard.writeText(referralLink);alert("Referral link copy হয়েছে");};
   if(!data)return <div className="loadingPage">Dashboard আসছে…</div>;
   const workerMenu=[["dashboard",Home,"Dashboard",true],["customers",ListChecks,"Customers",true],["transactions",Wallet,"Transactions",true],["targets",Target,"Targets",false],["referrals",UsersRound,"Referrals",false],["profile",UserRound,"Profile",true]];
-  return <AppShell className="workerPortal" menu={workerMenu} active={page} onNavigate={setPage} title={workerMenu.find(item=>item[0]===page)?.[2] || "Worker Portal"} actions={<><button className="appIconButton noticeButton" aria-label="Notifications" onClick={()=>setPage("notifications")}><Bell/>{announcements.length>0&&<span>{announcements.length}</span>}</button>{actions}</>}>
+  return <AppShell className="workerPortal" menu={workerMenu} active={page} onNavigate={setPage} title={workerMenu.find(item=>item[0]===page)?.[2] || "Worker Portal"} actions={<>{actions}<button className="appIconButton noticeButton" aria-label="Notifications" onClick={()=>setPage("notifications")}><Bell/>{announcements.length>0&&<span>{announcements.length}</span>}</button></>}>
 
     {page==="dashboard"&&<><div className="portalHero workerHero"><div><small>TEMPORARY WORKER</small><h1>আজকের কাজ এক নজরে</h1><p>Customer collection, correction এবং আপনার আয় সহজে দেখুন।</p></div><button className="primary" onClick={startNew}><Plus/> নতুন Customer</button></div><div className="metricGrid"><article><Database/><span>মোট জমা</span><b>{Object.values(data.counts||{}).reduce((a,b)=>a+b,0)}</b></article><article><RefreshCw/><span>Recollection</span><b>{data.counts.correction_required||0}</b></article><article><Wallet/><span>মোট আয়</span><b>{money(data.earned)}</b></article><article><ShieldCheck/><span>Available balance</span><b>{money(data.available)}</b></article></div>{data.notifications?.map(n=><div className="notification" key={n.id}><b>{n.title}</b><span>{n.message}</span></div>)}{data.targets?.length>0&&<section className="targetStrip"><Target/>{data.targets.map(t=><div key={t.id}><b>{t.name}</b><span>{Math.min(t.progress,t.required_count)}/{t.required_count} • Bonus {money(t.bonus_paisa)}</span><progress value={Math.min(t.progress,t.required_count)} max={t.required_count}/></div>)}</section>}<section className="quickActions"><button onClick={startNew}><Plus/><b>নতুন Customer</b><span>তথ্য সংগ্রহ শুরু করুন</span></button><button onClick={()=>setPage("customers")}><ListChecks/><b>Customer List</b><span>জমা ও correction দেখুন</span></button><button onClick={()=>setPage("transactions")}><Wallet/><b>Transactions</b><span>আয় ও withdrawal দেখুন</span></button></section></>}
     {page==="customers"&&<><div className="pageHeading"><div><small>MY COLLECTIONS</small><h1>Customer List</h1><p>আপনার জমা দেওয়া customer এবং বর্তমান status।</p></div><button className="primary" onClick={startNew}><Plus/> নতুন Customer</button></div><section className="portalPanel">{rows.length?<div className="portalTable">{rows.map(r=><article className="clickableRow" key={r.id} onClick={()=>openCustomer(r.id)}><div><b>{r.serial}</b><small>{new Date(r.createdAt).toLocaleDateString("en-GB")}</small></div><div><b>{r.name}</b><small>Nominee: {r.nominee||"—"}</small></div><div><b>{r.phone||"—"}</b><small>নিরাপত্তার জন্য masked</small></div><span className={`statusTag ${r.status}`}>{statusLabel[r.status]||r.status}</span>{r.correctionNote&&<p className="correctionNote">Admin note: {r.correctionNote}</p>}</article>)}</div>:<p className="empty">এখনো কোনো Customer জমা দেওয়া হয়নি</p>}</section></>}
@@ -2718,6 +2726,14 @@ function AdminCaseModal({ data, close, reload }) {
 function AdminPortal({ openRecords, actions }) {
   const [tab,setTab]=useState(()=>readPage("admin", "overview")),[dashboard,setDashboard]=useState(null),[users,setUsers]=useState([]),[cases,setCases]=useState([]),[withdrawals,setWithdrawals]=useState([]),[targets,setTargets]=useState([]),[finance,setFinance]=useState({workers:[],transactions:[],settings:{}}),[announcements,setAnnouncements]=useState([]),[adminSettings,setAdminSettings]=useState({support_whatsapp:""}),[announcementForm,setAnnouncementForm]=useState({title:"",description:"",image:"",targetUserId:""}),[selectedCase,setSelectedCase]=useState(null),[selectedWorker,setSelectedWorker]=useState(null),[targetForm,setTargetForm]=useState({name:'',metric:'approved',requiredCount:'',bonus:'',startsAt:'',endsAt:'',userId:''});
   useEffect(() => { writePage("admin", tab); }, [tab]);
+  useEffect(() => {
+    window.documentStudioPortalGoBack = () => {
+      if (tab === "overview") return false;
+      setTab("overview");
+      return true;
+    };
+    return () => { delete window.documentStudioPortalGoBack; };
+  }, [tab]);
   const load=async()=>{const responses=await Promise.all([fetch('/api/admin/dashboard'),fetch('/api/admin/users'),fetch('/api/customers'),fetch('/api/admin/withdrawals'),fetch('/api/admin/targets'),fetch('/api/admin/finance'),fetch('/api/admin/announcements'),fetch('/api/admin/settings')]);const values=await Promise.all(responses.map(readJson));const failed=responses.findIndex((response)=>!response.ok);if(failed>=0)throw new Error(values[failed].error||`HTTP ${responses[failed].status}`);const [da,dbb,dc,dd,de,df,dg,dh]=values;setDashboard(da);setUsers(dbb.users||[]);setCases(dc.customers||[]);setWithdrawals(dd.withdrawals||[]);setTargets(de.targets||[]);setFinance(df);setAnnouncements(dg.announcements||[]);setAdminSettings(dh.settings||{})};
   useEffect(()=>{load().catch(e=>alert(e.message));},[]);
   async function userStatus(id,status){const reason=status==='rejected'?prompt('বাতিলের কারণ লিখুন')||'':'';const r=await fetch(`/api/admin/users/${id}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({status,reason})});const x=await readJson(r);if(!r.ok)return alert(x.error);load();}
@@ -2749,7 +2765,7 @@ function AdminPortal({ openRecords, actions }) {
   if(!dashboard)return <div className="loadingPage">Admin panel আসছে…</div>;
   if(tab==='users')return <div className="adminPortal usersOnly"><button className="secondary" onClick={()=>setTab('overview')}><ChevronLeft/> Admin Overview</button><AdminUserControl users={users} reload={load} master={true}/></div>;
   const adminMenu=[["overview",Home,"Overview"],["users",UsersRound,"Users"],["cases",Database,"Applications"],["finance",Wallet,"Finance"],["targets",Target,"Targets"],["payments",Download,"Withdrawals"],["announcements",Bell,"Announcements"],["settings",Settings,"Settings"]];
-  return <AppShell className="adminPortal" menu={adminMenu} active={tab} onNavigate={setTab} title={adminMenu.find(item=>item[0]===tab)?.[2] || "Admin Portal"} footer={<button onClick={openRecords}><Database/> Customer Files</button>} actions={<><button className="appIconButton noticeButton" aria-label="Notifications" onClick={()=>setTab("announcements")}><Bell/>{announcements.filter(a=>a.active).length>0&&<span>{announcements.filter(a=>a.active).length}</span>}</button>{actions}</>}><div className="portalHero adminHero compactHero"><div><small>AMJHUPI CITY AGENT BANK</small><h1>{adminMenu.find(item=>item[0]===tab)?.[2]}</h1><p>সম্পূর্ণ control, review এবং management আপনার হাতে।</p></div></div>
+  return <AppShell className="adminPortal" menu={adminMenu} active={tab} onNavigate={setTab} title={adminMenu.find(item=>item[0]===tab)?.[2] || "Admin Portal"} footer={<button onClick={openRecords}><Database/> Customer Files</button>} actions={<>{actions}<button className="appIconButton noticeButton" aria-label="Notifications" onClick={()=>setTab("announcements")}><Bell/>{announcements.filter(a=>a.active).length>0&&<span>{announcements.filter(a=>a.active).length}</span>}</button></>}><div className="portalHero adminHero compactHero"><div><small>AMJHUPI CITY AGENT BANK</small><h1>{adminMenu.find(item=>item[0]===tab)?.[2]}</h1><p>সম্পূর্ণ control, review এবং management আপনার হাতে।</p></div></div>
     {tab==='overview'&&<><div className="metricGrid"><article><Clock3/><span>Worker approval অপেক্ষায়</span><b>{dashboard.users.pending||0}</b></article><article><Database/><span>নতুন Application</span><b>{dashboard.cases.submitted||0}</b></article><article><Check/><span>Account completed</span><b>{dashboard.cases.completed||0}</b></article><article><Wallet/><span>মোট Reward</span><b>{money(dashboard.totalRewards)}</b></article></div><section className="portalPanel"><h2>আজকের কাজ</h2><p className="empty">Pending worker approve করুন, submitted customer file যাচাই করুন, তারপর account complete হলে account number দিন।</p></section></>}
     {tab==='workers'&&<section className="portalPanel"><div className="panelTitle"><div><small>WORKER MANAGEMENT</small><h2>Registration ও Approval</h2></div></div><div className="portalTable">{users.map(u=><article key={u.id}><div><b>{u.full_name}</b><small>@{u.username}</small></div><div><b>{u.phone}</b><small>{u.email||'No email'}</small></div><div><b>{u.address||'—'}</b><small>Registration address</small></div><span className={`statusTag ${u.status}`}>{statusLabel[u.status]||u.status}</span><div className="rowActions"><button onClick={()=>openWorker(u.id)}>A–Z Preview</button>{u.status!=='approved'&&<button onClick={()=>userStatus(u.id,'approved')}>Approve</button>}{u.status!=='suspended'&&<button onClick={()=>userStatus(u.id,'suspended')}>Lock</button>}<button className="danger" onClick={()=>userStatus(u.id,'rejected')}>Reject</button></div></article>)}</div></section>}
     {tab==='cases'&&<section className="portalPanel"><div className="panelTitle"><div><small>APPLICATION REVIEW</small><h2>Customer submissions</h2></div></div><div className="portalTable applications">{cases.map(c=><article key={c.id}><div><b>{c.serial}</b><small>TW: {c.created_by}</small></div><div><b>{c.name}</b><small>{c.phone||'—'}</small></div><span className={`statusTag ${c.workflow_status}`}>{statusLabel[c.workflow_status]||c.workflow_status}</span><div className="rowActions"><button onClick={()=>openCase(c.id)}>A–Z Preview & Edit</button><button onClick={()=>review(c.id,'approve')}>Approve +৳50</button><button onClick={()=>review(c.id,'processing')}>Bank Processing</button><button onClick={()=>review(c.id,'complete')}>Complete +৳50</button><button onClick={()=>bonus(c.id)}>Bonus</button></div></article>)}</div></section>}
@@ -2855,13 +2871,30 @@ function App() {
   }, [auth?.authenticated,auth?.username,draftReady,step,name,details,people,docs,declaration,photoPrintLayout,editingCustomerId,customerConsent,savedSerial,savedCustomerId]);
   useEffect(() => {
     window.documentStudioBeforeReload = flushDraft;
-    return () => { delete window.documentStudioBeforeReload; };
+    window.documentStudioReload = () => {
+      if (window.DocumentStudioAndroid?.reload) { window.DocumentStudioAndroid.reload(); return true; }
+      return false;
+    };
+    return () => { delete window.documentStudioBeforeReload; delete window.documentStudioReload; };
   }, []);
   useEffect(() => {
     const ready = !!auth && (!auth.authenticated || draftReady);
     window.documentStudioReady = ready;
     if (ready && /DocumentStudioAndroid/.test(navigator.userAgent)) location.href = "documentstudio://ready";
   }, [auth,draftReady]);
+  useEffect(() => {
+    window.documentStudioGoBack = () => {
+      if (!auth?.authenticated) return false;
+      if (window.documentStudioPortalGoBack?.()) return true;
+      if (step === 2) { setStep(1); return true; }
+      if (step === 3) { setStep(2); return true; }
+      if (step === 4) { setStep(isAdminRole(auth.role) ? 6 : 0); return true; }
+      if (step === 5) { setStep(isAdminRole(auth.role) ? 6 : 1); return true; }
+      if (step === 1) { setStep(isAdminRole(auth.role) ? 6 : 0); return true; }
+      return false;
+    };
+    return () => { delete window.documentStudioGoBack; };
+  }, [auth, step]);
   async function clearCurrentDraft() {
     setConfirmClear(false);
     try {
@@ -3020,6 +3053,8 @@ function App() {
     setStep(2);
   }
   const actions = <>
+    <button className="appIconButton" aria-label="Reload app" title="Reload app" onClick={()=>window.documentStudioReload?.() || location.reload()}><RefreshCw/></button>
+    {auth.role === "master_admin" && step !== 6 && <button className="appIconButton" aria-label="Admin access" title="Admin access" onClick={()=>setStep(6)}><ShieldCheck/></button>}
     {[1,2,3].includes(step) && <button className="appIconButton" aria-label="Clear current draft" title="Clear all draft data" onClick={()=>setConfirmClear(true)}><Trash2/></button> }
     {isAdminRole(auth.role) && <button className="appIconButton" aria-label="AI Settings" title="AI Settings" onClick={() => setShowSettings(true)}><Settings/></button>}
     <button className="appIconButton" onClick={logout} aria-label="Logout" title={`${auth.username} — Logout`}><LogOut/></button>
