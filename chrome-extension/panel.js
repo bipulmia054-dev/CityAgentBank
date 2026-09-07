@@ -1,3 +1,4 @@
+import {readJson} from '../src/api-response.js';
 import {declarationCanvas, declarationPdf} from '../src/declaration.js';
 import { DEFAULT_SERVER, personFields, casePeople, safeImage } from './model.mjs';
 const $ = id => document.getElementById(id);
@@ -10,7 +11,7 @@ function unauthenticated() { clearRecords(); $('workspace').hidden = true; $('lo
 async function api(path, options = {}) {
   const response = await fetch(server + path, { ...options, credentials: 'include', cache: 'no-store', redirect: 'error', signal: options.signal || AbortSignal.timeout(90000), headers: { 'Content-Type': 'application/json', ...options.headers } });
   if (response.status === 401) { unauthenticated(); notice('Login করুন। Session শেষ হয়ে থাকতে পারে।', true); throw new Error('Login করুন। Session শেষ হয়ে থাকতে পারে।'); }
-  const result = await response.json();
+  const result = await readJson(response);
   if (!response.ok) throw new Error(result.error || `Server error ${response.status}`);
   return result;
 }
@@ -65,6 +66,30 @@ function photo(container, source, label) {
   const image = document.createElement('img'); image.src=src; image.alt=label; image.className='photo'; image.loading='lazy';
   const download=document.createElement('button');download.textContent=label+' Download';
   download.addEventListener('click',async()=>{const blob=await (await fetch(src)).blob();downloadBlob(blob,`${selected?.serial||'Customer'}_${label}.${blob.type.includes('png')?'png':'jpg'}`);});
+  const personIndex=selectedCase?.people?.findIndex(person=>person.photo===source) ?? -1;
+  if(personIndex>=0 && label.includes('Photo')) {
+    const process=document.createElement('button');process.textContent='AI দিয়ে ছবি তৈরি করুন';
+    process.addEventListener('click',async()=>{
+      const record=selected, revision=selectedRevision, originalCase=selectedCase;
+      process.disabled=true; notice('ছবি তৈরি হচ্ছে…');
+      try {
+        const result=await api('/api/passport-photo',{method:'POST',body:JSON.stringify({image:source}),signal:AbortSignal.timeout(300000)});
+        if(selected?.id!==record.id)return;
+        const preview=document.createElement('img');preview.src=safeImage(result.image);preview.className='photo';preview.alt='AI photo preview';
+        const save=document.createElement('button');save.textContent='এই ছবি সেভ করুন';
+        const discard=document.createElement('button');discard.textContent='বাদ দিন';
+        discard.onclick=()=>{preview.remove();save.remove();discard.remove();process.disabled=false;};
+        save.onclick=async()=>{save.disabled=true;try{
+          if(selected?.id!==record.id) return;
+          const updated={...originalCase,people:originalCase.people.map((p,i)=>i===personIndex?{...p,photo:result.image}:p)};
+          await api('/api/admin/customers/'+record.id,{method:'PUT',body:JSON.stringify({case:updated,revision})});
+          notice('ছবি সেভ হয়েছে।');await openRecord(record);
+        }catch(error){showError(error);save.disabled=false;}};
+        figure.append(preview,save,discard);notice('ছবি যাচাই করে সেভ করুন।');
+      } catch(error){showError(error);process.disabled=false;}
+    });
+    figure.append(process);
+  }
   figure.append(image,download);container.append(figure);
 }
 function personCard(label, person, fallback = {}, nominee = false) {

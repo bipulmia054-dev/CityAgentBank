@@ -71,6 +71,19 @@ class CustomerAssetsTest(unittest.TestCase):
         payload.update(username='invalid_referral',referralCode='NO_SUCH_CODE')
         self.assertEqual(self.request('/api/worker/register',payload,user='unknown')[0],400)
 
+    def test_worker_collection_without_income_or_ai(self):
+        picture='data:image/jpeg;base64,'+base64.b64encode(self.picture.getvalue()).decode()
+        archive=io.BytesIO()
+        with zipfile.ZipFile(archive,'w') as zipped: zipped.writestr('Test/details.txt','Synthetic worker collection')
+        case={'people':[{'name':'Worker test','nid':'9876543210','profession':'Shopkeeper','photo':picture,'idFront':picture,'idBack':picture},
+                         {'photo':picture,'idFront':picture,'idBack':picture}],
+              'declaration':{'rawDescription':'Runs a grocery shop'},'customerConsent':True}
+        payload={'name':'Worker test','archive':'data:application/zip;base64,'+base64.b64encode(archive.getvalue()).decode(),'case':case}
+        status,body=self.request('/api/customers',payload,user='worker')
+        self.assertEqual(status,201,body)
+        for endpoint in ['passport-photo','gemini-scan','gemini-description']:
+            self.assertEqual(self.request('/api/'+endpoint,{'image':picture},user='worker')[0],403)
+
     def test_01_master_admin_search_and_access_control(self):
         for query in ['0012345678','01700000000']:
             status,body=self.request('/api/customers?q='+query)

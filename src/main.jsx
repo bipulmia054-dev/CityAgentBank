@@ -1,14 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 
-async function readJson(response) {
-  const contentType = response.headers.get("content-type") || "";
-  if (!contentType.toLowerCase().includes("application/json")) {
-    await response.text();
-    throw new Error(`Server সঠিক data ফেরত দেয়নি (HTTP ${response.status})। Server restart করে আবার চেষ্টা করুন।`);
-  }
-  return response.json();
-}
+import { readJson } from "./api-response.js";
+
 import {
   Camera,
   Check,
@@ -200,7 +194,7 @@ async function scanId(images, onProgress) {
     body: JSON.stringify({ images: sources }),
   });
   onProgress?.(85);
-  const result = await response.json();
+  const result = await readJson(response);
   if (!response.ok) throw new Error(result.error || "Gemini scan failed");
   onProgress?.(100);
   return result;
@@ -217,7 +211,7 @@ async function cardScan(imageData, action, points, mode, fixedRatio = false) {
       fixedRatio,
     }),
   });
-  const result = await response.json();
+  const result = await readJson(response);
   if (!response.ok) throw new Error(result.error || "ID card scan হয়নি");
   return result;
 }
@@ -227,7 +221,7 @@ async function signatureScan(imageData, action = "process") {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ image: imageData, action }),
   });
-  const result = await response.json();
+  const result = await readJson(response);
   if (!response.ok) throw new Error(result.error || "Signature scan হয়নি");
   return result;
 }
@@ -237,7 +231,7 @@ async function makePassportPhoto(imageData) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ image: imageData }),
   });
-  const result = await response.json();
+  const result = await readJson(response);
   if (!response.ok) throw new Error(result.error || "Passport photo তৈরি হয়নি");
   return result;
 }
@@ -247,7 +241,7 @@ async function polishDescription(text, context = {}) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ text, ...context }),
   });
-  const result = await response.json();
+  const result = await readJson(response);
   if (!response.ok) throw new Error(result.error || "Description তৈরি হয়নি");
   return result.text;
 }
@@ -981,7 +975,23 @@ function nativeDocumentScan() {
     window.location.href = `documentstudio://scan?id=${encodeURIComponent(id)}`;
   });
 }
-function Capture({
+const CollectionOnly = React.createContext(false);
+function Capture(props) {
+  const raw = React.useContext(CollectionOnly);
+  return raw ? <RawCapture {...props}/> : <ProcessedCapture {...props}/>;
+}
+function RawCapture({title,value,onChange}) {
+  const [busy,setBusy]=useState(false);
+  async function select(event) {
+    const file=event.target.files?.[0]; if(!file)return;
+    setBusy(true);
+    try { onChange(await asDataUrl(file)); }
+    catch { alert("ছবি খোলা যায়নি। আবার নির্বাচন করুন।"); }
+    finally {setBusy(false);event.target.value="";}
+  }
+  return <section className="capture"><h4>{title}</h4>{value&&<img src={value} alt={title} style={{maxWidth:"100%",maxHeight:200,objectFit:"contain"}}/>}<label>ক্যামেরা<input type="file" accept="image/*" capture="environment" disabled={busy} onChange={select}/></label><label>গ্যালারি<input type="file" accept="image/*" disabled={busy} onChange={select}/></label>{busy&&<p>ছবি যোগ হচ্ছে…</p>}</section>;
+}
+function ProcessedCapture({
   title,
   value,
   onChange,
@@ -1538,11 +1548,12 @@ function Person({
   onApplicantOcr,
   showDetails = false,
 }) {
+  const collectionOnly = React.useContext(CollectionOnly);
   const identityDone =
       p.identityType === "birth" ? p.birthCertificate : p.idFront && p.idBack,
     done = p.name && identityDone && p.photo;
   async function readCard(img, key) {
-    if (!img) return;
+    if (!img || collectionOnly) return;
     if (key === "idFront") {
       change({
         ...p,
@@ -1654,7 +1665,7 @@ function Person({
           <h4>
             <IdCard /> ID Card{" "}
             <small className="ocrBadge">
-              Upload করলে details auto-scan হবে
+              {collectionOnly ? "কার্ড অনুযায়ী তথ্য লিখুন" : "Upload করলে details auto-scan হবে"}
             </small>
           </h4>
           <div className="grid">
@@ -2309,7 +2320,7 @@ function Records({ onBack, onEditCase }) {
       const response = await fetch(
         `/api/customers?q=${encodeURIComponent(value)}`,
       );
-      const result = await response.json();
+      const result = await readJson(response);
       if (!response.ok) throw new Error(result.error);
       setRows(result.customers);
     } catch (e) {
@@ -2333,7 +2344,7 @@ function Records({ onBack, onEditCase }) {
         email: editing.email,
       }),
     });
-    const result = await response.json();
+    const result = await readJson(response);
     if (!response.ok) return alert(result.error || "Edit save হয়নি");
     setEditing(null);
     load();
@@ -2348,13 +2359,13 @@ function Records({ onBack, onEditCase }) {
     const response = await fetch(`/api/customers/${row.id}`, {
       method: "DELETE",
     });
-    const result = await response.json();
+    const result = await readJson(response);
     if (!response.ok) return alert(result.error || "Delete হয়নি");
     load();
   }
   async function openCase(row) {
     const response = await fetch(`/api/customers/${row.id}/edit`);
-    const result = await response.json();
+    const result = await readJson(response);
     if (!response.ok)
       return alert(result.error || "File edit-এর জন্য খোলা যায়নি");
     onEditCase(result.case, row.id);
@@ -2613,12 +2624,12 @@ function WorkerDetailsModal({ data, close, refresh }) {
     setBusy(true);
     try {
       const response = await fetch(`/api/worker/customers/${customer.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ patch }) });
-      const result = await response.json();
+      const result = await readJson(response);
       if (!response.ok) throw new Error(result.error);
       alert("Recollection আবার জমা হয়েছে"); close(); refresh();
     } catch (error) { alert(error.message); } finally { setBusy(false); }
   }
-  return <div className="modalBackdrop" onMouseDown={close}><section className="settingsModal customerTextPreview" onMouseDown={(event) => event.stopPropagation()}><button className="modalClose" onClick={close}><X /></button><small>SECURE DETAILS PREVIEW</small><h2>{customer.serial} — {customer.name}</h2>{customer.people.map((personData, index) => <div className="textPerson" key={index}><h3>{index ? "Nominee" : "Applicant"}</h3>{Object.entries(personData).filter(([, value]) => value).map(([key, value]) => <p key={key}><span>{key}</span><b>{value}</b></p>)}</div>)}<div className="textPerson"><h3>Income Declaration</h3><p>{customer.declaration.polishedDescription || customer.declaration.rawDescription || "—"}</p><b>Monthly income: {customer.declaration.monthlyIncome || "—"}</b></div><p className="secureNotice"><LockKeyhole /> NID image, Passport photo এবং PDF নিরাপত্তার জন্য দেখানো হচ্ছে না।</p>{request && <section className="recollectionBox"><h3><RefreshCw /> Recollection প্রয়োজন</h3><p>{request.note}</p>{request.fields.map((field) => {
+  return <div className="modalBackdrop" onMouseDown={close}><section className="settingsModal customerTextPreview" onMouseDown={(event) => event.stopPropagation()}><button className="modalClose" onClick={close}><X /></button><small>SECURE DETAILS PREVIEW</small><h2>{customer.serial} — {customer.name}</h2>{customer.people.map((personData, index) => <div className="textPerson" key={index}><h3>{index ? "Nominee" : "Applicant"}</h3>{Object.entries(personData).filter(([, value]) => value).map(([key, value]) => <p key={key}><span>{key}</span><b>{value}</b></p>)}</div>)}<div className="textPerson"><h3>পেশা ও কাজের বিবরণ</h3><p>{customer.declaration.rawDescription || "—"}</p></div><p className="secureNotice"><LockKeyhole /> NID image, Passport photo এবং PDF নিরাপত্তার জন্য দেখানো হচ্ছে না।</p>{request && <section className="recollectionBox"><h3><RefreshCw /> Recollection প্রয়োজন</h3><p>{request.note}</p>{request.fields.map((field) => {
     const key = field.split(".").at(-1);
     const imageField = ["idFront", "idBack", "photo", "birthCertificate"].includes(key);
     if (imageField) return <RegistrationImage key={field} label={labels[key] || field} value={patch[field]} onChange={(value) => setPatch({ ...patch, [field]: value })} />;
@@ -2656,11 +2667,17 @@ function WorkerDashboard({ startNew, actions }) {
 
 function AdminCaseModal({ data, close, reload }) {
   const [caseData,setCaseData]=useState(data.customer.case),[fields,setFields]=useState([]),[saving,setSaving]=useState(false), c=data.customer;
+  const [aiBusy,setAiBusy]=useState(false);
+  async function processPhoto(index) {
+    setAiBusy(true);
+    try { const result=await makePassportPhoto(caseData.people[index].photo); updatePerson(index,"photo",result.image); }
+    catch(error){alert(error.message);} finally{setAiBusy(false);}
+  }
   const options=[["people.0.idFront","Applicant NID Front"],["people.0.idBack","Applicant NID Back"],["people.0.photo","Applicant Photo"],["people.0.nid","Applicant NID Number"],["people.0.addressBn","Applicant Address"],["people.1.idFront","Nominee NID Front"],["people.1.idBack","Nominee NID Back"],["people.1.photo","Nominee Photo"],["people.1.birthCertificate","Nominee Birth Certificate"],["people.1.nid","Nominee ID Number"],["declaration.rawDescription","Income details"],["declaration.monthlyIncome","Monthly income"]];
   const updatePerson=(i,key,value)=>setCaseData({...caseData,people:caseData.people.map((p,n)=>n===i?{...p,[key]:value}:p)});
-  async function saveEdit(){setSaving(true);try{const r=await fetch('/api/admin/customers/'+c.id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({case:caseData})}),x=await r.json();if(!r.ok)throw new Error(x.error);alert('Details save হয়েছে');reload();}catch(e){alert(e.message)}finally{setSaving(false)}}
-  async function recollect(){const note=prompt('Worker-কে কী আবার সংগ্রহ করতে হবে লিখুন');if(!note||!fields.length)return alert('Field নির্বাচন ও নির্দেশনা দিন');const r=await fetch('/api/admin/customers/'+c.id+'/review',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'correction',note,fields})}),x=await r.json();if(!r.ok)return alert(x.error);alert('Worker-এর কাছে Recollection পাঠানো হয়েছে');close();reload();}
-  return <div className="modalBackdrop adminPreviewBackdrop" onMouseDown={close}><section className="adminCaseModal" onMouseDown={e=>e.stopPropagation()}><button className="modalClose" onClick={close}><X/></button><div className="adminCaseHead"><div><small>FULL APPLICATION REVIEW</small><h1>{c.serial} — {caseData.name}</h1><p><b>TW:</b> {c.worker_name||c.created_by} • {c.worker_phone||'—'} • {c.created_by}</p></div><span className={'statusTag '+c.workflow_status}>{statusLabel[c.workflow_status]||c.workflow_status}</span></div><div className="adminReviewGrid"><div>{(caseData.people||[]).map((p,i)=><section className="reviewPerson" key={p.id||i}><h2>{i?'Nominee':'Applicant'}</h2><div className="reviewFields">{[["name","Name"],["nameBn","নাম"],["nid","NID / ID"],["dob","DOB"],["fatherNameEn","Father"],["motherNameEn","Mother"],["addressEn","Address English"],["addressBn","ঠিকানা"],["profession","Profession"]].map(([key,label])=><label key={key}><span>{label}</span><input value={p[key]||''} onChange={e=>updatePerson(i,key,e.target.value)}/></label>)}</div><div className="adminImageGrid">{[[p.idFront,'NID Front'],[p.idBack,'NID Back'],[p.birthCertificate,'Birth Certificate'],[p.photo,'Passport Photo']].filter(([src])=>src).map(([src,label])=><PreviewImage key={label} src={src} label={label} portrait={label==='Passport Photo'}/>)}</div></section>)}<section className="reviewPerson"><h2>Income Declaration</h2><label><span>Worker description</span><textarea value={caseData.declaration?.rawDescription||''} onChange={e=>setCaseData({...caseData,declaration:{...caseData.declaration,rawDescription:e.target.value}})}/></label><label><span>সাজানো Description</span><textarea value={caseData.declaration?.polishedDescription||''} onChange={e=>setCaseData({...caseData,declaration:{...caseData.declaration,polishedDescription:e.target.value}})}/></label><label><span>Monthly income</span><input value={caseData.declaration?.monthlyIncome||''} onChange={e=>setCaseData({...caseData,declaration:{...caseData.declaration,monthlyIncome:e.target.value}})}/></label></section><section className="reviewPerson"><h2>Signature ও Additional Documents</h2><div className="adminImageGrid">{(caseData.docs||[]).flatMap(d=>(d.pages||[]).map((src,i)=><PreviewImage key={(d.id||d.name)+i} src={src} label={(d.name||d.kind)+' '+(i+1)}/>))}</div></section></div><aside className="recollectionSelector"><h3>Recollection নির্বাচন</h3><p>শুধু নির্বাচিত item Worker আবার খুলতে পারবে।</p>{options.map(([value,label])=><label key={value}><input type="checkbox" checked={fields.includes(value)} onChange={e=>setFields(e.target.checked?[...fields,value]:fields.filter(v=>v!==value))}/><span>{label}</span></label>)}<button className="secondary full" onClick={recollect}><RefreshCw/> Recollection পাঠান</button><button className="primary full" disabled={saving} onClick={saveEdit}><Check/> Admin Edit Save</button><a className="recordDownload" href={'/api/customers/'+c.id+'/download'}><Download/> Full ZIP Download</a></aside></div></section></div>;
+  async function saveEdit(){setSaving(true);try{const r=await fetch('/api/admin/customers/'+c.id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({case:caseData})}),x=await readJson(r);if(!r.ok)throw new Error(x.error);alert('Details save হয়েছে');reload();}catch(e){alert(e.message)}finally{setSaving(false)}}
+  async function recollect(){const note=prompt('Worker-কে কী আবার সংগ্রহ করতে হবে লিখুন');if(!note||!fields.length)return alert('Field নির্বাচন ও নির্দেশনা দিন');const r=await fetch('/api/admin/customers/'+c.id+'/review',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'correction',note,fields})}),x=await readJson(r);if(!r.ok)return alert(x.error);alert('Worker-এর কাছে Recollection পাঠানো হয়েছে');close();reload();}
+  return <div className="modalBackdrop adminPreviewBackdrop" onMouseDown={close}><section className="adminCaseModal" onMouseDown={e=>e.stopPropagation()}><button className="modalClose" onClick={close}><X/></button><div className="adminCaseHead"><div><small>FULL APPLICATION REVIEW</small><h1>{c.serial} — {caseData.name}</h1><p><b>TW:</b> {c.worker_name||c.created_by} • {c.worker_phone||'—'} • {c.created_by}</p></div><span className={'statusTag '+c.workflow_status}>{statusLabel[c.workflow_status]||c.workflow_status}</span></div><div className="adminReviewGrid"><div>{(caseData.people||[]).map((p,i)=><section className="reviewPerson" key={p.id||i}><h2>{i?'Nominee':'Applicant'}</h2><div className="reviewFields">{[["name","Name"],["nameBn","নাম"],["nid","NID / ID"],["dob","DOB"],["fatherNameEn","Father"],["motherNameEn","Mother"],["addressEn","Address English"],["addressBn","ঠিকানা"],["profession","Profession"]].map(([key,label])=><label key={key}><span>{label}</span><input value={p[key]||''} onChange={e=>updatePerson(i,key,e.target.value)}/></label>)}</div><button className="secondary" disabled={aiBusy||!p.photo} onClick={()=>processPhoto(i)}>{aiBusy?"প্রসেস হচ্ছে…":"AI দিয়ে ছবি তৈরি করুন"}</button><div className="adminImageGrid">{[[p.idFront,'NID Front'],[p.idBack,'NID Back'],[p.birthCertificate,'Birth Certificate'],[p.photo,'Passport Photo']].filter(([src])=>src).map(([src,label])=><PreviewImage key={label} src={src} label={label} portrait={label==='Passport Photo'}/>)}</div></section>)}<DeclarationForm value={caseData.declaration||{}} change={declaration=>setCaseData({...caseData,declaration})} applicant={caseData.people?.[0]} signature={caseData.docs?.find(d=>d.kind==='signature')?.pages?.[0]}/><section className="reviewPerson"><h2>Signature ও Additional Documents</h2><div className="adminImageGrid">{(caseData.docs||[]).flatMap(d=>(d.pages||[]).map((src,i)=><PreviewImage key={(d.id||d.name)+i} src={src} label={(d.name||d.kind)+' '+(i+1)}/>))}</div></section></div><aside className="recollectionSelector"><h3>Recollection নির্বাচন</h3><p>শুধু নির্বাচিত item Worker আবার খুলতে পারবে।</p>{options.map(([value,label])=><label key={value}><input type="checkbox" checked={fields.includes(value)} onChange={e=>setFields(e.target.checked?[...fields,value]:fields.filter(v=>v!==value))}/><span>{label}</span></label>)}<button className="secondary full" onClick={recollect}><RefreshCw/> Recollection পাঠান</button><button className="primary full" disabled={saving} onClick={saveEdit}><Check/> Admin Edit Save</button><a className="recordDownload" href={'/api/customers/'+c.id+'/download'}><Download/> Full ZIP Download</a></aside></div></section></div>;
 }
 
 function AdminPortal({ openRecords, actions }) {
@@ -2668,13 +2685,13 @@ function AdminPortal({ openRecords, actions }) {
   useEffect(() => { writePage("admin", tab); }, [tab]);
   const load=async()=>{const responses=await Promise.all([fetch('/api/admin/dashboard'),fetch('/api/admin/users'),fetch('/api/customers'),fetch('/api/admin/withdrawals'),fetch('/api/admin/targets'),fetch('/api/admin/finance'),fetch('/api/admin/announcements'),fetch('/api/admin/settings')]);const values=await Promise.all(responses.map(readJson));const failed=responses.findIndex((response)=>!response.ok);if(failed>=0)throw new Error(values[failed].error||`HTTP ${responses[failed].status}`);const [da,dbb,dc,dd,de,df,dg,dh]=values;setDashboard(da);setUsers(dbb.users||[]);setCases(dc.customers||[]);setWithdrawals(dd.withdrawals||[]);setTargets(de.targets||[]);setFinance(df);setAnnouncements(dg.announcements||[]);setAdminSettings(dh.settings||{})};
   useEffect(()=>{load().catch(e=>alert(e.message));},[]);
-  async function userStatus(id,status){const reason=status==='rejected'?prompt('বাতিলের কারণ লিখুন')||'':'';const r=await fetch(`/api/admin/users/${id}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({status,reason})});const x=await r.json();if(!r.ok)return alert(x.error);load();}
-  async function review(id,action){let accountNumber='',note='';if(action==='complete')accountNumber=prompt('City Bank account number লিখুন')||'';if(action==='correction'||action==='reject')note=prompt('Worker-এর জন্য কারণ/নির্দেশনা লিখুন')||'';const r=await fetch(`/api/admin/customers/${id}/review`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,accountNumber,note})});const x=await r.json();if(!r.ok)return alert(x.error);load();}
-  async function bonus(id){const amount=prompt('Extra bonus amount (৳)');if(!amount)return;const reason=prompt('Bonus দেওয়ার কারণ');if(!reason)return;const r=await fetch(`/api/admin/customers/${id}/bonus`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({amount,reason})});const x=await r.json();if(!r.ok)return alert(x.error);load();}
-  async function withdrawal(id,status){const reference=status==='paid'?prompt('Payment reference / transaction ID')||'':'';const r=await fetch(`/api/admin/withdrawals/${id}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({status,reference})});const x=await r.json();if(!r.ok)return alert(x.error);load();}
-  async function openCase(id){const r=await fetch('/api/admin/customers/'+id),x=await r.json();if(!r.ok)return alert(x.error);setSelectedCase(x);}
-  async function openWorker(id){const r=await fetch('/api/admin/users/'+id+'/detail'),x=await r.json();if(!r.ok)return alert(x.error);setSelectedWorker(x.worker);}
-  async function createTarget(){const r=await fetch('/api/admin/targets',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(targetForm)}),x=await r.json();if(!r.ok)return alert(x.error);setTargetForm({name:'',metric:'approved',requiredCount:'',bonus:'',startsAt:'',endsAt:'',userId:''});load();}
+  async function userStatus(id,status){const reason=status==='rejected'?prompt('বাতিলের কারণ লিখুন')||'':'';const r=await fetch(`/api/admin/users/${id}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({status,reason})});const x=await readJson(r);if(!r.ok)return alert(x.error);load();}
+  async function review(id,action){let accountNumber='',note='';if(action==='complete')accountNumber=prompt('City Bank account number লিখুন')||'';if(action==='correction'||action==='reject')note=prompt('Worker-এর জন্য কারণ/নির্দেশনা লিখুন')||'';const r=await fetch(`/api/admin/customers/${id}/review`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,accountNumber,note})});const x=await readJson(r);if(!r.ok)return alert(x.error);load();}
+  async function bonus(id){const amount=prompt('Extra bonus amount (৳)');if(!amount)return;const reason=prompt('Bonus দেওয়ার কারণ');if(!reason)return;const r=await fetch(`/api/admin/customers/${id}/bonus`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({amount,reason})});const x=await readJson(r);if(!r.ok)return alert(x.error);load();}
+  async function withdrawal(id,status){const reference=status==='paid'?prompt('Payment reference / transaction ID')||'':'';const r=await fetch(`/api/admin/withdrawals/${id}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({status,reference})});const x=await readJson(r);if(!r.ok)return alert(x.error);load();}
+  async function openCase(id){const r=await fetch('/api/admin/customers/'+id),x=await readJson(r);if(!r.ok)return alert(x.error);setSelectedCase(x);}
+  async function openWorker(id){const r=await fetch('/api/admin/users/'+id+'/detail'),x=await readJson(r);if(!r.ok)return alert(x.error);setSelectedWorker(x.worker);}
+  async function createTarget(){const r=await fetch('/api/admin/targets',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(targetForm)}),x=await readJson(r);if(!r.ok)return alert(x.error);setTargetForm({name:'',metric:'approved',requiredCount:'',bonus:'',startsAt:'',endsAt:'',userId:''});load();}
   async function toggleTarget(id){await fetch('/api/admin/targets/'+id,{method:'PUT'});load();}
   async function adjust(worker, direction) {
     const input = prompt(`${worker.full_name}: ${direction === 'deduct' ? 'কত টাকা কমাবেন?' : 'কত টাকা যোগ করবেন?'}`);
@@ -2685,11 +2702,11 @@ function AdminPortal({ openRecords, actions }) {
     const reason = prompt('Adjustment-এর কারণ লিখুন');
     if (!reason?.trim()) return;
     const r = await fetch('/api/admin/finance/adjust', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({userId:worker.id,amount,reason})});
-    const x = await r.json();
+    const x = await readJson(r);
     if (!r.ok) return alert(x.error);
     load();
   }
-  async function rewardSettings(){const collection=prompt('Data approve reward (৳)',Number(finance.settings.collection_reward_paisa||5000)/100);if(collection===null)return;const completion=prompt('Account complete reward (৳)',Number(finance.settings.completion_reward_paisa||5000)/100);if(completion===null)return;const referral=prompt('Referral commission (%)',finance.settings.referral_percent||10);if(referral===null)return;const r=await fetch('/api/admin/reward-settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({collectionReward:collection,completionReward:completion,referralPercent:referral})}),x=await r.json();if(!r.ok)return alert(x.error);load();}
+  async function rewardSettings(){const collection=prompt('Data approve reward (৳)',Number(finance.settings.collection_reward_paisa||5000)/100);if(collection===null)return;const completion=prompt('Account complete reward (৳)',Number(finance.settings.completion_reward_paisa||5000)/100);if(completion===null)return;const referral=prompt('Referral commission (%)',finance.settings.referral_percent||10);if(referral===null)return;const r=await fetch('/api/admin/reward-settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({collectionReward:collection,completionReward:completion,referralPercent:referral})}),x=await readJson(r);if(!r.ok)return alert(x.error);load();}
   async function saveWorker(){const payload={fullName:selectedWorker.full_name,phone:selectedWorker.phone,email:selectedWorker.email,address:selectedWorker.address,nidNumber:selectedWorker.nid_number,accountName:selectedWorker.payout_account_name,accountNumber:selectedWorker.payout_account_number,branch:selectedWorker.payout_branch};const r=await fetch('/api/admin/users/'+selectedWorker.id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}),x=await readJson(r);if(!r.ok)return alert(x.error);alert('Worker profile ও bank details Save হয়েছে');setSelectedWorker(null);load();}
   async function createAnnouncement(){const r=await fetch('/api/admin/announcements',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(announcementForm)}),x=await readJson(r);if(!r.ok)return alert(x.error);setAnnouncementForm({title:"",description:"",image:"",targetUserId:""});load();}
   async function toggleAnnouncement(id){await fetch('/api/admin/announcements/'+id,{method:'PUT'});load();}
@@ -2710,7 +2727,7 @@ function AdminPortal({ openRecords, actions }) {
 }
 
 function WorkerFinalPreview({ name,details,people,declaration,onBack,onSave,saving }) {
-  return <div className="preview workerFinalPreview"><div className="previewTop"><button className="secondary" onClick={onBack}><ChevronLeft/> Edit করুন</button><div><small>SUBMIT PREVIEW • DETAILS ONLY</small><h1>{name}</h1></div></div><section className="previewPanel"><div className="previewDetails"><h3>Contact details</h3><dl><div><dt>Phone</dt><dd>{details.phone||"—"}</dd></div><div><dt>Email</dt><dd>{details.email||"—"}</dd></div></dl></div>{people.map((p,i)=><article className="workerPreviewPerson" key={p.id}><span>{i?"NOMINEE":"APPLICANT"}</span><h2>{p.name||p.nameBn}</h2><dl>{[["NID / ID",p.nid],["Date of Birth",p.dob],["Father",p.fatherNameEn||p.fatherNameBn],["Mother",p.motherNameEn||p.motherNameBn],["Address",p.addressEn||p.addressBn],["Profession",p.profession]].map(([k,v])=><div key={k}><dt>{k}</dt><dd>{v||"—"}</dd></div>)}</dl></article>)}<section className="languageDetails"><h3>Income Declaration</h3><p>{declaration.polishedDescription||declaration.rawDescription||"—"}</p><b>Monthly income: {declaration.monthlyIncome||"—"}</b></section><p className="secureNotice"><LockKeyhole/> ID images, passport photos ও PDF এই Preview-এ দেখানো হবে না এবং Submit-এর পরে Worker খুলতে পারবে না।</p><button className="primary downloadFinal" onClick={onSave} disabled={saving}><Database/>{saving?"Submit হচ্ছে…":"Customer Data Submit করুন"}</button></section></div>;
+  return <div className="preview workerFinalPreview"><div className="previewTop"><button className="secondary" onClick={onBack}><ChevronLeft/> Edit করুন</button><div><small>SUBMIT PREVIEW • DETAILS ONLY</small><h1>{name}</h1></div></div><section className="previewPanel"><div className="previewDetails"><h3>Contact details</h3><dl><div><dt>Phone</dt><dd>{details.phone||"—"}</dd></div><div><dt>Email</dt><dd>{details.email||"—"}</dd></div></dl></div>{people.map((p,i)=><article className="workerPreviewPerson" key={p.id}><span>{i?"NOMINEE":"APPLICANT"}</span><h2>{p.name||p.nameBn}</h2><dl>{[["NID / ID",p.nid],["Date of Birth",p.dob],["Father",p.fatherNameEn||p.fatherNameBn],["Mother",p.motherNameEn||p.motherNameBn],["Address",p.addressEn||p.addressBn],["Profession",p.profession]].map(([k,v])=><div key={k}><dt>{k}</dt><dd>{v||"—"}</dd></div>)}</dl></article>)}<section className="languageDetails"><h3>পেশা ও কাজের বিবরণ</h3><p>{declaration.rawDescription||"—"}</p><b>পেশা: {people[0]?.profession||"—"}</b></section><p className="secureNotice"><LockKeyhole/> ID images, passport photos ও PDF এই Preview-এ দেখানো হবে না এবং Submit-এর পরে Worker খুলতে পারবে না।</p><button className="primary downloadFinal" onClick={onSave} disabled={saving}><Database/>{saving?"Submit হচ্ছে…":"Customer Data Submit করুন"}</button></section></div>;
 }
 
 function App() {
@@ -2759,14 +2776,14 @@ function App() {
   useEffect(() => { setPhotoPrintPreview(""); }, [people]);
   useEffect(() => {
     fetch("/api/auth/status")
-      .then((response) => response.json())
+      .then((response) => readJson(response))
       .then(setAuth)
       .catch(() => setAuth({ setupRequired: false, authenticated: false }));
   }, []);
   useEffect(() => {
     if (!auth?.authenticated) return;
     fetch("/api/settings/gemini")
-      .then((response) => response.json())
+      .then((response) => readJson(response))
       .then((result) => {
         if (!result.configured) setShowSettings(true);
       });
@@ -2863,7 +2880,7 @@ function App() {
         ]),
       );
       setIdPdfPreviews(Object.fromEntries(previews));
-      if (declaration.customerName) {
+      if (auth.role !== "worker" && declaration.customerName) {
         const signature = docs.find((d) => d.kind === "signature")?.pages?.[0],
           canvas = await declarationCanvas(people[0], declaration, signature);
         setDeclarationJpg(await jpegInTargetRange(canvas));
@@ -2887,7 +2904,7 @@ function App() {
     try {
       const applicant = people[0],
         caseData = { name, details, people, docs, declaration, photoPrintLayout, customerConsent },
-        archive = await customerZip(caseData);
+        archive = await customerZip({...caseData,collectionOnly:auth.role === "worker"});
       const response = await fetch(
         editingCustomerId
           ? `/api/customers/${editingCustomerId}`
@@ -2906,7 +2923,7 @@ function App() {
           }),
         },
       );
-      const saved = await response.json();
+      const saved = await readJson(response);
       if (!response.ok) throw new Error(saved.error || "Server-এ save হয়নি");
       setSavedSerial(saved.serial);
       setSavedCustomerId(saved.id || editingCustomerId);
@@ -2982,7 +2999,7 @@ function App() {
     onNavigate: setStep,
   };
   return (
-    <PageFrame {...frameProps}>
+    <CollectionOnly.Provider value={auth.role === "worker"}><PageFrame {...frameProps}>
       {confirmClear && <div className="modalBackdrop"><section className="settingsModal" role="dialog" aria-modal="true" aria-label="Clear draft confirmation"><h2>চলমান Draft Clear করবেন?</h2><p>সব scan, ছবি ও অসম্পূর্ণ details মুছে যাবে। Server-এ জমা দেওয়া ফাইল থাকবে।</p><button className="primary" onClick={clearCurrentDraft}>Clear all draft data</button><button className="secondary" onClick={()=>setConfirmClear(false)}>Cancel</button></section></div>}
       {isAdminRole(auth.role) && <ApiSettings open={showSettings} onClose={() => setShowSettings(false)} />}
       <div className="appPageContents">
@@ -3185,7 +3202,7 @@ function App() {
                   <b>Additional Document যোগ করুন</b>
                   <small>নাম লিখুন • Auto crop • PDF save</small>
                 </button>
-                <DeclarationForm
+                {auth.role === "worker" ? <section className="portalPanel"><h3>পেশা ও কাজের বিবরণ</h3><label><span>পেশা</span><input required value={people[0]?.profession||""} onChange={e=>change({...people[0],profession:e.target.value})}/></label><label><span>গ্রাহক কী কাজ করেন?</span><textarea required value={declaration.rawDescription||""} onChange={e=>setDeclaration({...declaration,rawDescription:e.target.value})} placeholder="কাজ বা ব্যবসার ধরন এবং কীভাবে আয় করেন লিখুন"/></label></section> : <DeclarationForm
                   value={declaration}
                   change={setDeclaration}
                   applicant={people[0]}
@@ -3193,6 +3210,7 @@ function App() {
                     docs.find((d) => d.kind === "signature")?.pages?.[0]
                   }
                 />
+                }
                 <section className="detailsDivider">
                   <small>SCAN শেষ হওয়ার পর</small>
                   <h2>Applicant ও Nominee Details Review</h2>
@@ -3587,7 +3605,7 @@ function App() {
           </div>
         )}
       </div>
-    </PageFrame>
+    </PageFrame></CollectionOnly.Provider>
   );
 }
 createRoot(document.getElementById("root")).render(<App />);

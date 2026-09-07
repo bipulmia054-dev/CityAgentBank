@@ -17,7 +17,7 @@ export async function buildCustomerZip(caseData, {jpeg,identityPdf,docPdf,declar
   for(const [index,d] of docs.entries()) {
     const pages=d.pages.filter(Boolean);if(!pages.length)continue;
     const prefix=`${String(index+1).padStart(2,'0')}_${exportName(d.name || kinds.find(k=>k.id===d.kind)?.label || d.kind)}`;
-    if(d.kind==='signature') {
+    if(d.kind==='signature' && !caseData.collectionOnly) {
       for(const [i,page] of pages.entries()) {
         const png=page.startsWith('data:image/png;')?page:(await signatureScan(page,'process')).image;
         if(page===signature)signature=png;
@@ -27,7 +27,7 @@ export async function buildCustomerZip(caseData, {jpeg,identityPdf,docPdf,declar
       for(const [i,page] of pages.entries())await put(`${prefix}_Signature_Card${i?`_${i+1}`:''}.jpg`,await jpeg(page));
     } else await put(`${prefix}.pdf`,docPdf({...d,pages}));
   }
-  if(declaration.customerName || declaration.rawDescription || declaration.polishedDescription)await put('Income_Declaration.pdf',await declarationPdf(people[0],declaration,signature));
+  if(!caseData.collectionOnly && (declaration.customerName || declaration.rawDescription || declaration.polishedDescription))await put('Income_Declaration.pdf',await declarationPdf(people[0],declaration,signature));
   const print=photoPrintPdf(people,photoPrintLayout);if(print)await put('Passport_Photos_Print.pdf',print);
   await put('Print_Instructions.txt','Print Passport_Photos_Print.pdf on A4 at Actual size / 100%.\r\nNo PDF margins or borders. Borderless printing depends on your printer.\r\nTo move photos: open the saved customer in Document Studio, adjust Passport Photo Print Layout, then Save and download again.\r\n');
   return zip.generateAsync({type:'blob',mimeType:'application/zip',compression:'DEFLATE',compressionOptions:{level:6}});

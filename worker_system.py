@@ -544,6 +544,10 @@ def dispatch(handler, method, path, db, data_dir, digest):
             if not isinstance(case,dict):raise ValueError("Case details পাওয়া যায়নি")
             people=case.get("people") or [{}]; applicant=people[0]
             with db() as con:
+                con.execute("BEGIN IMMEDIATE")
+                current=con.execute("SELECT revision FROM customers WHERE id=?",(int(match.group(1)),)).fetchone()
+                if current and 'revision' in data and data['revision'] != current['revision']:
+                    return handler.reply(409,{"error":"ফাইল পরিবর্তিত হয়েছে। আবার খুলে চেষ্টা করুন।"})
                 result=con.execute("""UPDATE customers SET case_json=?,name=?,name_bn=?,customer_number=?,phone=?,email=?,revision=revision+1,
                     reviewed_by=?,reviewed_at=? WHERE id=?""",(json.dumps(case,ensure_ascii=False),str(case.get("name","")).upper(),
                     str((case.get("details") or {}).get("nameBn","")),str(applicant.get("nid","")),

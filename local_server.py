@@ -247,16 +247,19 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if route == "/api/customers": return self.save_customer()
         if route == "/api/gemini-scan":
-            if self.authorized(): return self.gemini_scan()
+            if self.is_admin(): return self.gemini_scan()
+            return self.reply(403, {"error":"AI processing শুধু Admin করতে পারবেন"})
             return
         if route == "/api/gemini-description":
-            if self.authorized(): return self.gemini_description()
+            if self.is_admin(): return self.gemini_description()
+            return self.reply(403, {"error":"AI processing শুধু Admin করতে পারবেন"})
             return
         if route == "/api/card-scan":
             if self.authorized(): return self.card_scan()
             return
         if route == "/api/passport-photo":
-            if self.authorized(): return self.passport_photo()
+            if self.is_admin(): return self.passport_photo()
+            return self.reply(403, {"error":"AI processing শুধু Admin করতে পারবেন"})
             return
         if route == "/api/signature-scan":
             if self.authorized(): return self.signature_scan()
@@ -798,8 +801,8 @@ OCR TEXT:
                 nominee_identity = nominee.get("birthCertificate") or (nominee.get("idFront") and nominee.get("idBack"))
                 if not (applicant_ok and nominee.get("photo") and nominee_identity):
                     raise ValueError("Applicant NID Front/Back/Photo এবং Nominee Photo ও NID অথবা Birth Certificate বাধ্যতামূলক")
-                if not str(declaration.get("monthlyIncome", "")).strip() or not str(declaration.get("rawDescription", "")).strip():
-                    raise ValueError("মাসিক আয় এবং Income Declaration details বাধ্যতামূলক")
+                if not str(applicant.get("profession", "")).strip() or not str(declaration.get("rawDescription", "")).strip():
+                    raise ValueError("পেশা ও গ্রাহকের কাজের বিবরণ লিখুন")
                 if not case_data.get("customerConsent"):
                     raise ValueError("গ্রাহকের সম্মতি নিশ্চিত করুন")
             case_json = json.dumps(case_data, ensure_ascii=False)
