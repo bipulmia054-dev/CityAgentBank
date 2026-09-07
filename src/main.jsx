@@ -2272,7 +2272,7 @@ function Access({ setupRequired, onAccess }) {
               ? "Admin Account তৈরি করুন"
               : mode === "register" ? "Approval-এর জন্য Submit করুন" : "Login করুন"}
         </button>
-        <a className="androidDownloadLink" href="/Document-Studio.apk" download>
+        <a className="androidDownloadLink" href="/outputs/City-Amjhupi.apk" download>
           <Download size={17} /> Android App Download
         </a>
         <small className="accessNote">
