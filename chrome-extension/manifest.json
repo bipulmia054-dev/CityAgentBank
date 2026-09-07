@@ -1,18 +1,21 @@
 {
   "manifest_version": 3,
-  "name": "Document Studio — Customer Search",
-  "version": "2.0.0",
+  "name": "City Amjhupi",
+  "version": "2.2.0",
   "minimum_chrome_version": "141",
-  "description": "Keep customer details alongside your work. Search your private Document Studio server.",
+  "description": "City Amjhupi customer search and document downloads.",
   "permissions": [
     "sidePanel",
     "storage"
   ],
   "host_permissions": [
-    "https://abmgroup.tech/*"
+    "https://citybank.abmgroup.tech/*"
   ],
   "action": {
-    "default_title": "Open Document Studio"
+    "default_title": "Open City Amjhupi",
+    "default_icon": {
+      "128": "city-logo.png"
+    }
   },
   "background": {
     "service_worker": "background.js"
@@ -22,5 +25,8 @@
   },
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'none'; base-uri 'none'"
+  },
+  "icons": {
+    "128": "city-logo.png"
   }
 }

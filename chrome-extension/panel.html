@@ -1,12 +1,12 @@
 <!doctype html>
 <html lang="bn">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Document Studio</title><link rel="stylesheet" href="panel.css"></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>City Amjhupi</title><link rel="stylesheet" href="panel.css"></head>
 <body>
-  <header><div><strong>Document Studio</strong><small>Customer details • পাশে খোলা থাকবে</small></div><button id="close" aria-label="Close panel">✕</button></header>
+  <header><img class="brandLogo" src="city-logo.png" alt="City Amjhupi"><div><strong>City Amjhupi</strong><small>Customer details • পাশে খোলা থাকবে</small></div><button id="close" aria-label="Close panel">✕</button></header>
   <main>
     <div id="notice" role="status" aria-live="polite"></div>
-    <p class="serverAddress">Server: https://abmgroup.tech</p>
-    <section id="login" hidden><h2>Login করুন</h2><p>Document Studio-এর username/password ব্যবহার করুন।</p><form id="login-form"><label>Username<input id="username" autocomplete="username" required></label><label>Password<input id="password" type="password" autocomplete="current-password" required></label><button id="login-button">Login</button></form></section>
+    <p class="serverAddress">Server: https://citybank.abmgroup.tech</p>
+    <section id="login" hidden><h2>Login করুন</h2><p>City Amjhupi-এর username/password ব্যবহার করুন।</p><form id="login-form"><label>Username<input id="username" autocomplete="username" required></label><label>Password<input id="password" type="password" autocomplete="current-password" required></label><button id="login-button">Login</button></form></section>
     <section id="workspace" hidden>
       <div class="session"><span id="user"></span><button id="logout" class="quiet">Logout</button></div>
       <form id="search-form"><label for="query">Customer খুঁজুন</label><div class="search"><input id="query" type="search" placeholder="নাম, ফোন, NID অথবা email" maxlength="200" autocomplete="off"><button id="search-button">Search</button></div></form>

@@ -1,17 +1,17 @@
-# abmgroup.tech — Server upload
+# citybank.abmgroup.tech — Server upload
 
-Android ও Chrome extension-এর স্থায়ী ঠিকানা `https://abmgroup.tech/`। এই প্যাকেজ domain-এ deploy করা হয়নি। Python 3.11+, persistent disk এবং HTTPS আছে এমন VPS/container hosting প্রয়োজন। শুধু static HTML/public_html upload করলে login, scan বা search চলবে না।
+Android ও Chrome extension-এর স্থায়ী ঠিকানা `https://citybank.abmgroup.tech/`। এই প্যাকেজ domain-এ deploy করা হয়নি। Python 3.11+, persistent disk এবং HTTPS আছে এমন VPS/container hosting প্রয়োজন। শুধু static HTML/public_html upload করলে login, scan বা search চলবে না।
 
 ## চালু করুন
 
 1. Server ZIP application directory-তে extract করুন।
 2. `data` folder তৈরি করুন, অথবা নিচের নিয়মে পুরোনো data copy করুন।
 3. `docker compose up -d --build` চালান।
-4. Hosting reverse proxy-তে `https://abmgroup.tech` → `http://127.0.0.1:8765` সেট করুন। বৈধ SSL, 100 MB request-body limit ও কমপক্ষে 180 seconds proxy timeout দিন।
+4. Hosting reverse proxy-তে `https://citybank.abmgroup.tech` → `http://127.0.0.1:8765` সেট করুন। বৈধ SSL, 100 MB request-body limit ও কমপক্ষে 180 seconds proxy timeout দিন।
 5. `/api/auth/status` JSON response দিলে server চালু হয়েছে। খালি database হলে website থেকে প্রথম Admin account তৈরি করুন।
 6. Admin → AI Settings-এ আপনার Gemini API key দিন। OCR এবং AI Recreate-এর জন্য বৈধ key ও internet প্রয়োজন।
 
-Docker ছাড়া: `pip install -r requirements.txt`, তারপর `python local_server.py`। Process manager-এ auto-restart দিন। Environment: `PORT=8765`, `DATA_DIR=/আপনার/private/data`, `PUBLIC_URL=https://abmgroup.tech`। Frontend ইতিমধ্যে `dist/client`-এ build করা আছে।
+Docker ছাড়া: `pip install -r requirements.txt`, তারপর `python local_server.py`। Process manager-এ auto-restart দিন। Environment: `PORT=8765`, `DATA_DIR=/আপনার/private/data`, `PUBLIC_URL=https://citybank.abmgroup.tech`। Frontend ইতিমধ্যে `dist/client`-এ build করা আছে।
 
 ## পুরোনো account/customer স্থানান্তর
 
@@ -21,8 +21,8 @@ Docker ছাড়া: `pip install -r requirements.txt`, তারপর `python 
 
 ## Upload-এর পর download links
 
-- `https://abmgroup.tech/Document-Studio.apk`
-- `https://abmgroup.tech/Document-Studio-Chrome-Extension.zip`
+- `https://citybank.abmgroup.tech/Document-Studio.apk`
+- `https://citybank.abmgroup.tech/Document-Studio-Chrome-Extension.zip`
 
 ## Draft এবং reload
 

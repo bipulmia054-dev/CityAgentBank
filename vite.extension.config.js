@@ -6,7 +6,7 @@ export default defineConfig({
   build: {outDir: '../outputs/chrome-extension', emptyOutDir: true, rollupOptions: {input: resolve('chrome-extension/panel.html')}},
   plugins: [{name:'extension-package',closeBundle(){
     const out='outputs/chrome-extension'; mkdirSync(out,{recursive:true});
-    for(const file of ['manifest.json','background.js','README-BN.md'])copyFileSync(`chrome-extension/${file}`,`${out}/${file}`);
+    for(const file of ['manifest.json','background.js','README-BN.md','city-logo.png'])copyFileSync(`chrome-extension/${file}`,`${out}/${file}`);
     copyFileSync('public/income-declaration-page1.png',`${out}/income-declaration-page1.png`);
     cpSync('public/fonts',`${out}/fonts`,{recursive:true});
   }}],

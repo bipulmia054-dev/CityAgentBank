@@ -3,7 +3,7 @@ services:
     build: .
     restart: unless-stopped
     environment:
-      PUBLIC_URL: https://abmgroup.tech
+      PUBLIC_URL: https://citybank.abmgroup.tech
       DATA_DIR: /data
       PORT: 8765
     volumes:

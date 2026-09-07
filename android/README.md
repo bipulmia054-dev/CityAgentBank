@@ -1,6 +1,6 @@
-# Document Studio Android 2.0
+# City Amjhupi Android 2.0
 
-Permanent server: https://abmgroup.tech/. Deploy the server API before using the APK. No customer data, credential or API key is bundled.
+Permanent server: https://citybank.abmgroup.tech/. Deploy the server API before using the APK. No customer data, credential or API key is bundled.
 
 One website header, a loading screen and swipe-down reload at the top of the page. Reload waits for draft writes. The hash route and username-scoped IndexedDB restore the current page and unfinished form, including images. Clear removes the local draft. Uninstall or clearing site data removes drafts.
 

@@ -1,4 +1,4 @@
-export const DEFAULT_SERVER = 'https://abmgroup.tech';
+export const DEFAULT_SERVER = 'https://citybank.abmgroup.tech';
 export function serverOrigin(input) {
   const url = new URL(input);
   const host = url.hostname;

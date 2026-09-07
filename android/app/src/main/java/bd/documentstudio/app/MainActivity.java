@@ -35,7 +35,7 @@ public class MainActivity extends ComponentActivity {
     private LinearLayout loading;
     private float touchX, touchY;
     private boolean pullCandidate;
-    private static final String SERVER = "https://abmgroup.tech/";
+    private static final String SERVER = "https://citybank.abmgroup.tech/";
     private final java.util.concurrent.ExecutorService io = Executors.newSingleThreadExecutor();
     private ActivityResultLauncher<IntentSenderRequest> scannerLauncher;
     private ActivityResultLauncher<Intent> fileLauncher, saveLauncher;
@@ -101,8 +101,12 @@ public class MainActivity extends ComponentActivity {
         root.addView(content, new LinearLayout.LayoutParams(-1, -1));
         web = new WebView(this); content.addView(web, new android.widget.FrameLayout.LayoutParams(-1, -1));
         loading = new LinearLayout(this); loading.setOrientation(LinearLayout.VERTICAL); loading.setGravity(android.view.Gravity.CENTER); loading.setBackgroundColor(Color.WHITE); loading.setPadding(30,30,30,30);
+        android.widget.ImageView logo = new android.widget.ImageView(this);
+        logo.setImageResource(R.drawable.city_logo); logo.setContentDescription("City Amjhupi");
+        logo.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
+        loading.addView(logo, new LinearLayout.LayoutParams(-1, (int)(100 * getResources().getDisplayMetrics().density)));
         ProgressBar progress = new ProgressBar(this); loading.addView(progress);
-        status = new TextView(this); status.setGravity(android.view.Gravity.CENTER); status.setTextColor(Color.rgb(32,42,56)); status.setTextSize(18); status.setPadding(16,24,16,16); status.setText("Document Studio লোড হচ্ছে…"); loading.addView(status);
+        status = new TextView(this); status.setGravity(android.view.Gravity.CENTER); status.setTextColor(Color.rgb(32,42,56)); status.setTextSize(18); status.setPadding(16,24,16,16); status.setText("City Amjhupi লোড হচ্ছে…"); loading.addView(status);
         Button retry = new Button(this); retry.setText("আবার লোড করুন"); retry.setOnClickListener(v -> reloadCurrentPage()); loading.addView(retry);
         content.addView(loading, new android.widget.FrameLayout.LayoutParams(-1,-1)); setContentView(root);
         web.setOnTouchListener((view, event) -> {
@@ -122,7 +126,7 @@ public class MainActivity extends ComponentActivity {
         config.setUserAgentString(config.getUserAgentString() + " DocumentStudioAndroid/2");
         CookieManager.getInstance().setAcceptCookie(true); CookieManager.getInstance().setAcceptThirdPartyCookies(web, false);
         web.setWebViewClient(new WebViewClient() {
-            @Override public void onPageStarted(WebView view, String url, android.graphics.Bitmap icon) { pageFailed = false; loading.setVisibility(android.view.View.VISIBLE); status.setText("Document Studio লোড হচ্ছে…"); }
+            @Override public void onPageStarted(WebView view, String url, android.graphics.Bitmap icon) { pageFailed = false; loading.setVisibility(android.view.View.VISIBLE); status.setText("City Amjhupi লোড হচ্ছে…"); }
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 String url = request.getUrl().toString();
                 if (request.isForMainFrame() && trusted(view.getUrl()) && url.startsWith("documentstudio://")) {
@@ -144,7 +148,7 @@ public class MainActivity extends ComponentActivity {
                 } CookieManager.getInstance().flush();
             }
             @Override public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
-                if (request.isForMainFrame()) { pageFailed = true; loading.setVisibility(android.view.View.VISIBLE); status.setText("abmgroup.tech-এ সংযোগ হয়নি। ইন্টারনেট পরীক্ষা করে আবার লোড করুন।"); }
+                if (request.isForMainFrame()) { pageFailed = true; loading.setVisibility(android.view.View.VISIBLE); status.setText("citybank.abmgroup.tech-এ সংযোগ হয়নি। ইন্টারনেট পরীক্ষা করে আবার লোড করুন।"); }
             }
         });
         web.setWebChromeClient(new WebChromeClient() {
@@ -192,7 +196,7 @@ public class MainActivity extends ComponentActivity {
         return a.getScheme().equals(b.getScheme()) && a.getHost().equals(b.getHost()) && a.getPort() == b.getPort();
     }
     private void reloadCurrentPage() {
-        if (pageFailed || !trusted(web.getUrl())) { web.loadUrl(getPreferences(0).getString("lastUrl",server)); return; }
+        if (pageFailed || !trusted(web.getUrl())) { String saved = getPreferences(0).getString("lastUrl",server); web.loadUrl(trusted(saved) ? saved : server); return; }
         rememberPage();
         web.evaluateJavascript("Promise.resolve(window.documentStudioBeforeReload ? window.documentStudioBeforeReload() : null).then(()=>location.reload()).catch(()=>alert('Draft save হয়নি। Storage পরীক্ষা করে আবার চেষ্টা করুন।'))",null);
     }

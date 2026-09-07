@@ -1,6 +1,6 @@
 # Chrome Extension 2.0
 
-স্থায়ী server: https://abmgroup.tech। আগে server package upload ও Python backend চালু করুন।
+স্থায়ী server: https://citybank.abmgroup.tech। আগে server package upload ও Python backend চালু করুন।
 
 1. ZIP extract করুন।
 2. Chrome-এ chrome://extensions খুলে Developer mode চালু করুন।

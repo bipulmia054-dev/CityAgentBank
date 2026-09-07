@@ -14,7 +14,7 @@ async function api(path, options = {}) {
   if (!response.ok) throw new Error(result.error || `Server error ${response.status}`);
   return result;
 }
-function showError(error) { notice(error instanceof TypeError || error.name === 'TimeoutError' ? 'Server পাওয়া যাচ্ছে না। ইন্টারনেট ও abmgroup.tech server পরীক্ষা করুন।' : error.message, true); }
+function showError(error) { notice(error instanceof TypeError || error.name === 'TimeoutError' ? 'Server পাওয়া যাচ্ছে না। ইন্টারনেট ও citybank.abmgroup.tech server পরীক্ষা করুন।' : error.message, true); }
 async function connect() {
   notice('Server-এ সংযোগ হচ্ছে…');
   try {

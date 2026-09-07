@@ -39,6 +39,6 @@ test('toolbar click opens global panel without toggle/close', async () => {
 
 test('production extension has only the permanent server permission',()=>{
  const manifest=JSON.parse(readFileSync(new URL('./manifest.json',import.meta.url)));
- assert.deepEqual(manifest.host_permissions,['https://abmgroup.tech/*']);
+ assert.deepEqual(manifest.host_permissions,['https://citybank.abmgroup.tech/*']);
  assert.equal(manifest.optional_host_permissions,undefined);
 });

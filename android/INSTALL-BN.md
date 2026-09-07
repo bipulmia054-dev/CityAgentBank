@@ -1,7 +1,7 @@
 # Android installation
 
-1. ফোনে Document-Studio.apk নিয়ে install করুন। প্রয়োজনে সেই file manager/browser-এর Install unknown apps permission দিন।
-2. App সরাসরি https://abmgroup.tech খুলবে। আগে server package upload ও Python backend চালু করতে হবে।
+1. ফোনে City-Amjhupi.apk নিয়ে install করুন। প্রয়োজনে সেই file manager/browser-এর Install unknown apps permission দিন।
+2. App সরাসরি https://citybank.abmgroup.tech খুলবে। আগে server package upload ও Python backend চালু করতে হবে।
 3. নিজের account দিয়ে login করুন।
 4. Page-এর একদম ওপর থেকে নিচে swipe করলে draft save শেষ করে একই page reload হবে।
 5. অসম্পূর্ণ form/ছবি রেখে বন্ধ করলেও একই ফোনে ফিরে আসবে। Clear দিলে draft মুছবে।
