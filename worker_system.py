@@ -210,15 +210,13 @@ def target_progress(con, user_id):
 def dispatch(handler, method, path, db, data_dir, digest):
     if path == "/api/worker/register" and method == "POST":
         try:
-            data = handler.body(40 * 1024 * 1024)
+            data = handler.body(64 * 1024)
             username = str(data.get("username", "")).strip()
             password = str(data.get("password", ""))
             full_name = str(data.get("fullName", "")).strip()
             phone = digits(data.get("phone"))
-            nid_number = digits(data.get("nidNumber"))
             if len(username) < 3 or len(password) < 8: raise ValueError("Username αªòαª«αª¬αªòαºìαª╖αºç αº⌐ αªÅαª¼αªé password αº« αªàαªòαºìαª╖αª░αºçαª░ αªªαª┐αª¿")
             if not full_name or len(phone) < 10: raise ValueError("αª¬αºéαª░αºìαªú αª¿αª╛αª« αªô αª╕αªáαª┐αªò mobile number αªªαª┐αª¿")
-            if len(nid_number) not in (10, 13, 17): raise ValueError("αª╕αªáαª┐αªò NID number αªªαª┐αª¿")
             with db() as con:
                 if con.execute("SELECT 1 FROM users WHERE username=? COLLATE NOCASE", (username,)).fetchone(): raise ValueError("αªÅαªç username αªåαªùαºç αª¼αºìαª»αª¼αª╣αª╛αª░ αª╣αºƒαºçαª¢αºç")
                 referral = str(data.get("referralCode", "")).strip().upper()
@@ -230,14 +228,9 @@ def dispatch(handler, method, path, db, data_dir, digest):
                     payout_account_name,payout_account_number,payout_branch,nid_hash,nid_last4,referred_by,nid_number)
                     VALUES(?,?,?,?, 'worker','pending',?,?,?,?,?,?,?,?,?,?,?)""",
                     (username, digest(password, salt), salt, now(), full_name, phone, str(data.get("email", "")).strip(),
-                     str(data.get("address", "")).strip(), "", "", "", blind_index(data_dir, nid_number), nid_number[-4:], referrer["id"], nid_number))
+                     "", "", "", "", "", "", referrer["id"], ""))
                 user_id = cur.lastrowid
                 con.execute("UPDATE users SET referral_code=? WHERE id=?", (f"TW{user_id:05d}", user_id))
-                folder = Path(data_dir) / "worker_registration" / f"worker-{user_id:06d}"
-                files = {"nidFront": save_data_image(data.get("nidFront"), folder, "nid-front"),
-                         "nidBack": save_data_image(data.get("nidBack"), folder, "nid-back"),
-                         "selfie": save_data_image(data.get("selfie"), folder, "selfie")}
-                con.execute("UPDATE users SET registration_json=? WHERE id=?", (json.dumps(files), user_id))
                 audit(con, username, "worker_registered", "user", user_id)
             return handler.reply(201, {"ok": True, "message": "Registration αª£αª«αª╛ αª╣αºƒαºçαª¢αºçαÑñ Admin approval-αªÅαª░ αª£αª¿αºìαª» αªàαª¬αºçαªòαºìαª╖αª╛ αªòαª░αºüαª¿αÑñ"})
         except Exception as error:

@@ -38,3 +38,21 @@ Draft অন্য ফোন/browser/domain-এ যায় না। Site data cl
 - Tests: `python -m unittest test_customer_assets -v`; `node --test chrome-extension/model.test.mjs`
 
 APK build/lint, isolated backend tests, browser draft/reload/Clear, extension field order/PDF save/signature refresh পরীক্ষা করা হয়েছে। AI test-এ fixture response ব্যবহৃত হয়েছে; নিজের key দিয়ে live AI call এবং physical Android phone-এ scanner/swipe/download পরীক্ষা করুন।
+
+## Registration submit-এ HTTP 413 / Unexpected token <
+
+Nginx ছোট request API-তে পাঠালেও বড় ছবি-সহ request আটকে HTML 413 response দিতে পারে। সক্রিয় citybank.abmgroup.tech HTTPS server block-এ নিচের directive যোগ করুন (পুরো config প্রতিস্থাপন করবেন না):
+
+```nginx
+client_max_body_size 100m;
+client_body_timeout 180s;
+```
+
+যে location block app-এ proxy করছে, সেখানে দিন:
+
+```nginx
+proxy_read_timeout 180s;
+proxy_send_timeout 180s;
+```
+
+কোনো location-এ আলাদা ছোট client_max_body_size থাকলে সেটিও ঠিক করুন। `sudo nginx -t` সফল হলে `sudo systemctl reload nginx` চালান। Hosting panel থাকলে ওই domain-এর upload/body size limit পরিবর্তন করুন। এটি VPS Nginx-এর পরিবর্তন; শুধু Docker app rebuild বা APK reinstall করলে এই limit বদলাবে না।

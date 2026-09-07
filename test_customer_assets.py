@@ -44,6 +44,23 @@ class CustomerAssetsTest(unittest.TestCase):
         except urllib.error.HTTPError as error:
             with error:return error.code,error.read()
 
+    def test_registration_without_identity_uploads(self):
+        with server.db() as con:
+            con.execute("UPDATE users SET referral_code='TESTREF' WHERE username='admin'")
+        payload = {'fullName':'Registration Test','phone':'01712345678','email':'test@example.invalid',
+                   'username':'registration_test','password':'test-password-123','referralCode':'TESTREF'}
+        status, body = self.request('/api/worker/register', payload, user='unknown')
+        self.assertEqual(status, 201, body)
+        with server.db() as con:
+            row = con.execute("SELECT * FROM users WHERE username='registration_test'").fetchone()
+            self.assertEqual(row['status'], 'pending')
+            self.assertEqual(row['nid_number'], '')
+            self.assertFalse(row['registration_json'])
+        self.assertFalse((server.DATA_DIR / 'worker_registration').exists())
+        self.assertEqual(self.request('/api/worker/register',payload,user='unknown')[0],400)
+        payload.update(username='invalid_referral',referralCode='NO_SUCH_CODE')
+        self.assertEqual(self.request('/api/worker/register',payload,user='unknown')[0],400)
+
     def test_01_master_admin_search_and_access_control(self):
         for query in ['0012345678','01700000000']:
             status,body=self.request('/api/customers?q='+query)
