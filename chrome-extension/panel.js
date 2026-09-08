@@ -123,17 +123,17 @@ async function signatureCards() {
   if(!result.documents?.length){const p=document.createElement('p');p.textContent='Admin card upload করলে এখানে স্বয়ংক্রিয়ভাবে দেখা যাবে।';const reload=document.createElement('button');reload.textContent='Signature Card Reload';reload.addEventListener('click',async()=>{reload.disabled=true;try{await signatureCards();}catch(error){showError(error);}finally{reload.disabled=false;}});section.append(p,reload);}
   for(const doc of result.documents||[])for(const [i,page] of (doc.pages||[]).entries())photo(section,page,`Signature Card ${i+1}`);
 }
-async function declarationCard(caseData) {
+function declarationCard(caseData) {
   const card=document.createElement('section');card.className='declaration';const title=document.createElement('h3');title.textContent='Income Declaration';card.append(title);
   const values={...caseData.declaration};const form=document.createElement('div');
-  const labels={customerName:'Customer name',fatherName:'Father name',motherName:'Mother name',address:'পাড়া / গ্রাম',postOffice:'Post office',postCode:'Post code',thana:'Thana',district:'District',monthlyIncome:'Monthly income',accountNumber:'Account number',rawDescription:'মূল বক্তব্য',polishedDescription:'সাজানো Description'};
+  const labels={customerName:'গ্রাহকের নাম',fatherName:'পিতার নাম',motherName:'মাতার নাম',address:'পাড়া / গ্রাম',postOffice:'ডাকঘর',postCode:'পোস্ট কোড',thana:'থানা',district:'জেলা',monthlyIncome:'মাসিক আয়',accountNumber:'হিসাব নম্বর',rawDescription:'মূল বক্তব্য',polishedDescription:'সাজানো বিবরণ'};
   const inputs={};
   for(const [key,label] of Object.entries(labels)) {const wrapper=document.createElement('label');wrapper.textContent=label;const input=document.createElement(key.includes('Description')?'textarea':'input');input.value=values[key]||'';input.addEventListener('input',()=>{values[key]=input.value;declarationDirty=true;});inputs[key]=input;wrapper.append(input);form.append(wrapper);}
   const preview=document.createElement('img');preview.className='pdfPreview';preview.alt='Income declaration PDF preview';
   const controls=document.createElement('div');controls.className='actions';
-  const recreate=document.createElement('button');recreate.textContent='AI দিয়ে Recreate';
-  const save=document.createElement('button');save.textContent='Details থেকে PDF Save & Download';
-  const existing=document.createElement('button');existing.textContent='Saved PDF Download';existing.className='quiet';
+  const recreate=document.createElement('button');recreate.textContent='AI দিয়ে আবার তৈরি করুন';
+  const save=document.createElement('button');save.textContent='PDF Save ও Download করুন';
+  const existing=document.createElement('button');existing.textContent='সেভ করা PDF Download';existing.className='quiet';
   const message=document.createElement('p');message.setAttribute('role','status');
   const id=selected.id;
   let revision=selectedRevision;
@@ -144,7 +144,7 @@ async function declarationCard(caseData) {
   save.addEventListener('click',async()=>{save.disabled=true;recreate.disabled=true;message.textContent='PDF তৈরি ও Save হচ্ছে…';try{await render();const pdf=await declarationPdf(applicant,values,signature,'income-declaration-page1.png');const encoded=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(pdf);});const result=await api(`/api/customers/${id}/declaration`,{method:'POST',body:JSON.stringify({declaration:values,pdf:encoded,revision})});revision=result.revision;if(selected?.id===id){selectedRevision=result.revision;lastSeenRevision=result.revision;declarationDirty=false;}downloadBlob(pdf,`${id}_Income_Declaration.pdf`);message.textContent='PDF Save হয়েছে।';}catch(error){message.textContent=error.message;}finally{save.disabled=false;recreate.disabled=false;}});
   existing.addEventListener('click',async()=>{try{const response=await fetch(`${server}/api/customers/${id}/declaration`,{credentials:'include',cache:'no-store',redirect:'error'});if(!response.ok)throw new Error('Saved PDF পাওয়া যায়নি। Details থেকে PDF তৈরি করুন।');downloadBlob(await response.blob(),`${id}_Income_Declaration.pdf`);}catch(error){message.textContent=error.message;}});
   controls.append(recreate,save,existing);card.append(preview,form,controls,message);$('record-content').append(card);
-  await render();
+  setTimeout(()=>render().catch(error=>{message.textContent=error.message;}),0);
 }
 async function openRecord(row) {
   const version = ++requestVersion; selected = row; $('record-content').replaceChildren(); $('results').hidden = true; $('record').hidden = false;
@@ -156,8 +156,8 @@ async function openRecord(row) {
   personCard('Applicant / আবেদনকারী', applicant, {...row,email:row.email||caseData.details?.email,phone:row.phone||caseData.details?.phone});
   if (nominees.length) nominees.forEach((p, i) => personCard(`Nominee / নমিনি ${nominees.length > 1 ? i + 1 : ''}`, p, {}, true));
   else { const missing = document.createElement('p'); missing.textContent = 'Nominee-এর details সংরক্ষিত নেই।'; $('record-content').append(missing); }
-  try { await declarationCard(caseData); } catch(error) { showError(error); }
-  if(version===requestVersion) await signatureCards();
+  declarationCard(caseData);
+  if(version===requestVersion) signatureCards().catch(showError);
 }
 let polling=false;
 setInterval(async()=>{
@@ -165,7 +165,7 @@ setInterval(async()=>{
   polling=true;
   const id=selected.id;
   try{const result=await api(`/api/customers/${id}/revision`);if(selected?.id===id&&result.revision!==lastSeenRevision){await signatureCards();lastSeenRevision=result.revision;if(!declarationDirty){notice('ফাইল আপডেট হয়েছে—সর্বশেষ Signature Card দেখানো হচ্ছে। অন্য details দেখতে ফাইল আবার খুলুন।');}else{notice('Server-এ file update হয়েছে। আপনার edit রাখা আছে; Save conflict হলে নতুন file খুলুন।');}}}catch(error){showError(error);}finally{polling=false;}
-},1000);
+},500);
 $('search-form').addEventListener('submit', event => { event.preventDefault(); search(); });
 $('back').addEventListener('click', () => { requestVersion++; selected = null; $('record').hidden = true; $('record-content').replaceChildren(); $('results').hidden = false; notice(); });
 $('login-form').addEventListener('submit', async event => {

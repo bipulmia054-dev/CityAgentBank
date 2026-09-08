@@ -1,4 +1,4 @@
-import base64, hashlib, hmac, io, json, mimetypes, os, re, secrets, sqlite3, zipfile
+import base64, gzip, hashlib, hmac, io, json, mimetypes, os, re, secrets, sqlite3, zipfile
 import urllib.error, urllib.request
 import worker_system
 import customer_assets
@@ -939,8 +939,12 @@ Use an empty value after the label when unreadable. Never include parents' names
         except Exception as error: return self.reply(500, {"error": str(error)})
 
     def reply(self, status, value, cookie=None, clear=False):
-        content = json.dumps(value, ensure_ascii=False).encode(); self.send_response(status)
+        content = json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode()
+        compress = len(content) > 2048 and "gzip" in self.headers.get("Accept-Encoding", "").lower()
+        if compress: content = gzip.compress(content, compresslevel=5)
+        self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8"); self.send_header("Cache-Control", "no-store")
+        if compress: self.send_header("Content-Encoding", "gzip"); self.send_header("Vary", "Accept-Encoding")
         secure = "; Secure" if os.environ.get("PUBLIC_URL", "").startswith("https://") else ""
         if cookie: self.send_header("Set-Cookie", f"ds_session={cookie}; Path=/; HttpOnly; SameSite=Strict; Max-Age={SESSION_DAYS * 86400}{secure}")
         if clear: self.send_header("Set-Cookie", "ds_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0")
