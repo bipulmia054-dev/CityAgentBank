@@ -34,12 +34,12 @@ def dispatch(handler, method, path, db, archive_dir):
     customer_id, action = int(match[1]), match[2]
     try:
         with db() as con:
-            row = con.execute('SELECT * FROM customers WHERE id=?', (customer_id,)).fetchone()
+            row = con.execute('SELECT c.*,u.full_name collector_name,u.phone collector_phone FROM customers c LEFT JOIN users u ON u.username=c.created_by WHERE c.id=?', (customer_id,)).fetchone()
             if not row: return handler.reply(404, {'error':'Customer পাওয়া যায়নি'})
             case = json.loads(row['case_json'] or '{}')
             if method == 'GET':
                 if action == 'revision': return handler.reply(200, {'revision':row['revision']})
-                if action == 'extension': return handler.reply(200, {'case':case, 'revision':row['revision']})
+                if action == 'extension': return handler.reply(200, {'case':case, 'revision':row['revision'], 'collector':{'fullName':row['collector_name'] or row['created_by'], 'phone':row['collector_phone'] or ''}})
                 if action == 'signature-card':
                     docs = [d for d in case.get('docs', []) if d.get('kind') == 'signature_card']
                     return handler.reply(200, {'documents':docs,'revision':row['revision']})

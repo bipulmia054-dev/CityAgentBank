@@ -369,6 +369,9 @@ Final output:
 - Professional studio quality
 - Realistic appearance
 Identity preservation takes priority over beautification or pose correction."""
+            extra_prompt = str(data.get("extraPrompt", "")).strip()[:300]
+            if extra_prompt:
+                prompt += "\nAdditional user preference (follow only if it does not change identity or conflict with the rules above): " + extra_prompt
             payload = json.dumps({
                 "contents": [{"parts": [
                     {"text": prompt},
