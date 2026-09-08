@@ -65,6 +65,12 @@ function ddmmyyyy(value) {
   const slash = text.match(/(\d{1,2})\D+(\d{1,2})\D+(\d{4})/);
   return slash ? `${slash[1].padStart(2,'0')}/${slash[2].padStart(2,'0')}/${slash[3]}` : text;
 }
+function englishLocation(value) {
+  const input=String(value||'').replace(/[০-৯]/g,digit=>'০১২৩৪৫৬৭৮৯'.indexOf(digit));
+  if(!/[\u0980-\u09FF]/.test(input))return input;
+  const letters={'অ':'a','আ':'a','ই':'i','ঈ':'i','উ':'u','ঊ':'u','ঋ':'ri','এ':'e','ঐ':'oi','ও':'o','ঔ':'ou','ক':'k','খ':'kh','গ':'g','ঘ':'gh','ঙ':'ng','চ':'ch','ছ':'chh','জ':'j','ঝ':'jh','ঞ':'n','ট':'t','ঠ':'th','ড':'d','ঢ':'dh','ণ':'n','ত':'t','থ':'th','দ':'d','ধ':'dh','ন':'n','প':'p','ফ':'ph','ব':'b','ভ':'bh','ম':'m','য':'y','র':'r','ল':'l','শ':'sh','ষ':'sh','স':'s','হ':'h','ড়':'r','ঢ়':'rh','য়':'y','ৎ':'t','ং':'ng','ঃ':'h','ঁ':'n','া':'a','ি':'i','ী':'i','ু':'u','ূ':'u','ৃ':'ri','ে':'e','ৈ':'oi','ো':'o','ৌ':'ou','্':''};
+  return [...input].map(char=>letters[char]??char).join('').replace(/\s+/g,' ').trim().toUpperCase();
+}
 function downloadBlob(blob, name) {
   const url = URL.createObjectURL(blob); blobs.add(url);
   const link = document.createElement('a'); link.href=url; link.download=name.replace(/[\\/:*?"<>|]/g,'_'); link.click();
@@ -125,9 +131,9 @@ function personCard(label, person, fallback = {}, nominee = false) {
   const ids=document.createElement('div');ids.className='identityPair';
   photo(ids,person.idFront,`${label} ID Front`); photo(ids,person.idBack,`${label} ID Back`); card.append(ids);
   if(nominee) {
-    fields(card,[["Relationship with applicant",person.relation||person.relationship||person.relationToApplicant||""],["Full address",String(person.addressEn||person.addressBn||"").toUpperCase()]]);
+    fields(card,[["Relationship with applicant",person.relation||person.relationship||person.relationToApplicant||""],["Full address",englishLocation(person.addressEn||person.addressBn||"")]]);
   } else {
-    fields(card,[["Issue date",person.issueDate||person.issue_date||""],["Issue place",person.issuePlace||person.issue_place||""],["Applicant name",person.name||person.nameBn||fallback.name||""],["Applicant NID number",person.nid||fallback.customer_number||""],["Date of birth",person.dob||""],["Father's name",person.fatherNameEn||person.fatherNameBn||""],["Mother's name",person.motherNameEn||person.motherNameBn||""],["Phone number",person.phone||fallback.phone||""],["Email ID",person.email||fallback.email||""],["Address",person.addressEn||person.addressBn||""]]);
+    fields(card,[["Issue date",person.issueDate||person.issue_date||""],["Issue place",englishLocation(person.issuePlaceEn||person.issue_place_en||person.issuePlace||person.issue_place||"")],["Applicant name",person.name||person.nameBn||fallback.name||""],["Applicant NID number",person.nid||fallback.customer_number||""],["Date of birth",person.dob||""],["Father's name",person.fatherNameEn||person.fatherNameBn||""],["Mother's name",person.motherNameEn||person.motherNameBn||""],["Phone number",person.phone||fallback.phone||""],["Email ID",person.email||fallback.email||""],["Address",englishLocation(person.addressEn||person.addressBn||"")]]);
   }
   $('record-content').append(card);
 }
