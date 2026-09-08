@@ -57,10 +57,10 @@ function fields(container, values) {
   container.append(list);
 }
 function ddmmyyyy(value) {
-  const text = String(value || '').trim();
-  const iso = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:T.*)?$/);
+  const text = String(value || '').trim().replace(/[০-৯]/g, digit => '০১২৩৪৫৬৭৮৯'.indexOf(digit));
+  const iso = text.match(/^(\d{4})\D+(\d{1,2})\D+(\d{1,2})(?:\D.*)?$/);
   if (iso) return `${iso[3].padStart(2,'0')}/${iso[2].padStart(2,'0')}/${iso[1]}`;
-  const slash = text.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+  const slash = text.match(/(\d{1,2})\D+(\d{1,2})\D+(\d{4})/);
   return slash ? `${slash[1].padStart(2,'0')}/${slash[2].padStart(2,'0')}/${slash[3]}` : text;
 }
 function downloadBlob(blob, name) {
