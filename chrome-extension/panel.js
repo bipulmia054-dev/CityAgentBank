@@ -153,9 +153,9 @@ async function openRecord(row) {
   try { const data = await api(`/api/customers/${encodeURIComponent(row.id)}/extension`); if (version !== requestVersion) return; caseData = data.case || {}; selectedCase=caseData; selectedRevision=data.revision; lastSeenRevision=data.revision; declarationDirty=false; notice(); }
   catch (error) { if (version !== requestVersion) return; if ($('workspace').hidden) return; notice('সম্পূর্ণ details পাওয়া যায়নি। ' + error.message + ' মূল PDF download করে দেখুন।', true); return; }
   const { applicant, nominees } = casePeople(caseData);
-  personCard('Applicant / আবেদনকারী', applicant, {...row,email:row.email||caseData.details?.email,phone:row.phone||caseData.details?.phone});
-  if (nominees.length) nominees.forEach((p, i) => personCard(`Nominee / নমিনি ${nominees.length > 1 ? i + 1 : ''}`, p, {}, true));
-  else { const missing = document.createElement('p'); missing.textContent = 'Nominee-এর details সংরক্ষিত নেই।'; $('record-content').append(missing); }
+  personCard('Applicant', applicant, {...row,email:row.email||caseData.details?.email,phone:row.phone||caseData.details?.phone});
+  if (nominees.length) nominees.forEach((p, i) => personCard(`Nominee ${nominees.length > 1 ? i + 1 : ''}`, p, {}, true));
+  else { const missing = document.createElement('p'); missing.textContent = 'Nominee details are not available.'; $('record-content').append(missing); }
   declarationCard(caseData);
   if(version===requestVersion) signatureCards().catch(showError);
 }

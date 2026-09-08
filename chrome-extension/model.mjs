@@ -10,22 +10,22 @@ export function serverOrigin(input) {
 const text = value => typeof value === 'string' || typeof value === 'number' ? String(value) : '';
 export function personFields(person = {}, fallback = {}) {
   return [
-    ['Issue date / ইস্যুর তারিখ', text(person.issueDate || person.issue_date)],
-    ['Issue place / ইস্যুর স্থান', text(person.issuePlace || person.issue_place)],
+    ['Issue date', text(person.issueDate || person.issue_date)],
+    ['Issue place', text(person.issuePlace || person.issue_place)],
     ['ID card number', text(person.nid || fallback.customer_number)],
-    ['Name / নাম', text(person.name || person.nameBn || fallback.name)],
+    ['Name', text(person.name || person.nameBn || fallback.name)],
     ['Date of birth', text(person.dob)],
     ['Email address', text(person.email || fallback.email)],
     ['Phone number', text(person.phone || fallback.phone)],
-    ['Profession / পেশা', text(person.profession)],
+    ['Profession', text(person.profession)],
     ["Father's name", text(person.fatherNameEn || person.fatherNameBn)],
     ["Mother's name", text(person.motherNameEn || person.motherNameBn)],
-    ['Address / ঠিকানা', text(person.addressBn || person.addressEn)],
-    ['পাড়া / গ্রাম', text(person.village || person.para)],
+    ['Address', text(person.addressEn || person.addressBn)],
+    ['Village / area', text(person.village || person.para)],
     ['Post office', text(person.postOffice)],
     ['Post code', text(person.postCode || person.postalCode)],
-    ['Thana / উপজেলা', text(person.thana)],
-    ['District / জেলা', text(person.district)]
+    ['Thana', text(person.thana)],
+    ['District', text(person.district)]
   ];
 }
 export function casePeople(caseData = {}) {
