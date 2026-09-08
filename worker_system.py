@@ -399,8 +399,12 @@ def dispatch(handler, method, path, db, data_dir, digest):
                 item["withdrawn"] = paid; item["balance"] = item["total_income"] - paid
             transactions = [dict(r) for r in con.execute("""SELECT t.*,u.full_name,u.username,c.serial,c.name customer_name
                 FROM transactions t JOIN users u ON u.id=t.user_id LEFT JOIN customers c ON c.id=t.customer_id ORDER BY t.id DESC LIMIT 500""")]
+            transaction_summary = dict(con.execute("""SELECT COUNT(*) transaction_count,
+                COALESCE(SUM(CASE WHEN amount_paisa > 0 THEN amount_paisa ELSE 0 END),0) total_credit,
+                COALESCE(SUM(CASE WHEN amount_paisa < 0 THEN -amount_paisa ELSE 0 END),0) total_debit
+                FROM transactions""").fetchone())
             settings = {r["key"]: r["value"] for r in con.execute("SELECT key,value FROM settings WHERE key IN ('collection_reward_paisa','completion_reward_paisa','referral_percent')")}
-        return handler.reply(200, {"workers": workers, "transactions": transactions, "settings": settings})
+        return handler.reply(200, {"workers": workers, "transactions": transactions, "transactionSummary": transaction_summary, "settings": settings})
 
     if path == "/api/admin/finance/adjust" and method == "POST":
         try:
@@ -457,10 +461,12 @@ def dispatch(handler, method, path, db, data_dir, digest):
             profile = con.execute("SELECT id,username,full_name,phone,email,address,status,role,nid_number,nid_last4,referral_code,referred_by,created_at,payout_account_name,payout_account_number,payout_branch FROM users WHERE id=? AND role IN ('worker','subadmin')", (int(match.group(1)),)).fetchone()
             if not profile: return handler.reply(404, {"error": "User পাওয়া যায়নি"})
             earned, reserved, available = balance(con, profile["id"])
-            transactions = [dict(r) for r in con.execute("SELECT id,type,amount_paisa,reason,created_at FROM transactions WHERE user_id=? ORDER BY id DESC LIMIT 100", (profile["id"],)).fetchall()]
+            transactions = [dict(r) for r in con.execute("""SELECT t.id,t.type,t.amount_paisa,t.reason,t.reference,t.created_at,c.serial,c.name customer_name
+                FROM transactions t LEFT JOIN customers c ON c.id=t.customer_id WHERE t.user_id=? ORDER BY t.created_at DESC,t.id DESC LIMIT 500""", (profile["id"],)).fetchall()]
             customers = [dict(r) for r in con.execute("SELECT id,serial,name,customer_number,phone,workflow_status,created_at FROM customers WHERE created_by=? ORDER BY id DESC LIMIT 100", (profile["username"],)).fetchall()]
             children = [dict(r) for r in con.execute("SELECT id,username,full_name,role,status,referral_code FROM users WHERE referred_by=? ORDER BY id", (profile["id"],)).fetchall()]
-        return handler.reply(200, {"profile": {**dict(profile), "payout_account_number": ("******" + profile["payout_account_number"][-4:]) if profile["payout_account_number"] else "", "earned": earned, "reserved": reserved, "available": available, "transactions": transactions, "customers": customers, "children": children}})
+            withdrawals = [dict(r) for r in con.execute("SELECT id,amount_paisa,status,account_name,account_number,branch,reference,note,requested_at,processed_at FROM withdrawals WHERE user_id=? ORDER BY id DESC LIMIT 100", (profile["id"],)).fetchall()]
+        return handler.reply(200, {"profile": {**dict(profile), "earned": earned, "reserved": reserved, "available": available, "transactions": transactions, "customers": customers, "children": children, "withdrawals": withdrawals}})
 
     match = re.fullmatch(r"/api/admin/users/(\d+)/balance", path)
     if match and method == "POST":
@@ -561,21 +567,25 @@ def dispatch(handler, method, path, db, data_dir, digest):
     match = re.fullmatch(r"/api/admin/users/(\d+)", path)
     if match and method == "PUT":
         try:
-            data = handler.body(16384); status = str(data.get("status", "")).strip()
+            data = handler.body(16384); status = str(data.get("status", "")).strip(); new_password = str(data.get("newPassword", ""))
             if status and status not in ("approved", "rejected", "suspended"): raise ValueError("Status সঠিক নয়")
+            if new_password and len(new_password) < 8: raise ValueError("নতুন password কমপক্ষে ৮ অক্ষরের দিন")
             with db() as con:
-                current = con.execute("SELECT * FROM users WHERE id=? AND role='worker'", (int(match.group(1)),)).fetchone()
+                current = con.execute("SELECT * FROM users WHERE id=? AND role IN ('worker','subadmin')", (int(match.group(1)),)).fetchone()
                 if not current: raise ValueError("Worker পাওয়া যায়নি")
+                if current["role"] == "subadmin" and user["role"] != "master_admin": raise ValueError("শুধু Master Admin Subadmin পরিবর্তন করতে পারবেন")
                 values = {
                     "full_name": str(data.get("fullName", current["full_name"])).strip(), "phone": digits(data.get("phone", current["phone"])),
                     "email": str(data.get("email", current["email"])).strip(), "address": str(data.get("address", current["address"])).strip(),
                     "nid_number": digits(data.get("nidNumber", current["nid_number"])), "payout_account_name": str(data.get("accountName", current["payout_account_name"])).strip(),
                     "payout_account_number": digits(data.get("accountNumber", current["payout_account_number"])), "payout_branch": str(data.get("branch", current["payout_branch"])).strip()}
+                salt = secrets.token_hex(16) if new_password else current["salt"]
+                password_hash = hashlib.pbkdf2_hmac("sha256", new_password.encode(), bytes.fromhex(salt), 310000).hex() if new_password else current["password_hash"]
                 result = con.execute("""UPDATE users SET status=?,full_name=?,phone=?,email=?,address=?,nid_number=?,nid_hash=?,nid_last4=?,
-                    payout_account_name=?,payout_account_number=?,payout_branch=?,approved_by=?,approved_at=?,rejection_reason=? WHERE id=? AND role='worker'""",
+                    payout_account_name=?,payout_account_number=?,payout_branch=?,password_hash=?,salt=?,approved_by=?,approved_at=?,rejection_reason=? WHERE id=? AND role IN ('worker','subadmin')""",
                     (status or current["status"], values["full_name"], values["phone"], values["email"], values["address"], values["nid_number"],
                      blind_index(data_dir, values["nid_number"]), values["nid_number"][-4:], values["payout_account_name"], values["payout_account_number"], values["payout_branch"],
-                     user["username"], now() if status == "approved" else current["approved_at"], str(data.get("reason", current["rejection_reason"]))[:500], int(match.group(1))))
+                     password_hash, salt, user["username"], now() if status == "approved" else current["approved_at"], str(data.get("reason", current["rejection_reason"]))[:500], int(match.group(1))))
                 if not result.rowcount: raise ValueError("Worker পাওয়া যায়নি")
                 audit(con, user["username"], "worker_" + (status or "profile_edited"), "user", match.group(1), {"fields": list(data)})
             return handler.reply(200, {"ok": True})
