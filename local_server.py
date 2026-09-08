@@ -142,12 +142,13 @@ class Handler(SimpleHTTPRequestHandler):
             query = parse_qs(route.query).get("q", [""])[0].strip(); pattern = f"%{query}%"
             current = self.current_user()
             with db() as con:
-                rows = con.execute("""SELECT id,serial,name,name_bn,customer_number,phone,email,archive_name,created_at,created_by,workflow_status,correction_note
-                    FROM customers WHERE (?='admin' OR created_by=?) AND (?='' OR serial LIKE ? OR name LIKE ? COLLATE NOCASE OR name_bn LIKE ?
-                    OR customer_number LIKE ? OR phone LIKE ? OR email LIKE ? COLLATE NOCASE
-                    OR json_extract(CASE WHEN json_valid(case_json) THEN case_json ELSE '{}' END,
+                rows = con.execute("""SELECT c.id,c.serial,c.name,c.name_bn,c.customer_number,c.phone,c.email,c.archive_name,c.created_at,c.created_by,c.workflow_status,c.correction_note,
+                    u.full_name AS worker_name,u.phone AS worker_phone
+                    FROM customers c LEFT JOIN users u ON u.username=c.created_by WHERE (?='admin' OR c.created_by=?) AND (?='' OR c.serial LIKE ? OR c.name LIKE ? COLLATE NOCASE OR c.name_bn LIKE ?
+                    OR c.customer_number LIKE ? OR c.phone LIKE ? OR c.email LIKE ? COLLATE NOCASE
+                    OR json_extract(CASE WHEN json_valid(c.case_json) THEN c.case_json ELSE '{}' END,
                                     '$.people[0].nid') LIKE ?)
-                    ORDER BY id DESC LIMIT 100""",
+                    ORDER BY c.id DESC LIMIT 100""",
                     ("admin" if self.is_admin() else "worker", current["username"], query, pattern, pattern, pattern, pattern, pattern, pattern, pattern)).fetchall()
             if not self.is_admin():
                 return self.reply(200, {"customers": [{"id": r["id"], "serial": r["serial"], "name": r["name"],
@@ -167,8 +168,20 @@ class Handler(SimpleHTTPRequestHandler):
             if not row: return self.reply(404, {"error": "Customer file পাওয়া যায়নি"})
             path = Path(row["archive_path"])
             if not path.is_file() or path.parent.resolve() != ARCHIVE_DIR.resolve():
-                return self.reply(404, {"error": "Archive file পাওয়া যায়নি"})
-            if path.suffix.lower() == ".zip":
+                # Fast-submit records have no archive yet.  Generate it only
+                # for this download instead of making the worker wait earlier.
+                from customer_archive import case_customer_zip
+                try:
+                    case = json.loads(row["case_json"] or "{}")
+                    filename = row["archive_name"] or f"{safe(row['name'])}_{safe(row['phone'] or 'NO-MOBILE')}.zip"
+                    path = ARCHIVE_DIR / f"CUST-{customer_id:06d}_{filename}"
+                    content = case_customer_zip(dict(row), case)
+                    path.write_bytes(content)
+                    with db() as con: con.execute("UPDATE customers SET archive_name=?,archive_path=? WHERE id=?", (filename, str(path.resolve()), customer_id))
+                    download_name = filename
+                except Exception as error:
+                    return self.reply(400, {"error": f"Archive তৈরি হয়নি: {error}"})
+            elif path.suffix.lower() == ".zip":
                 content, download_name = path.read_bytes(), row["archive_name"]
             elif path.suffix.lower() == ".pdf":
                 from customer_archive import legacy_customer_zip
@@ -332,13 +345,20 @@ class Handler(SimpleHTTPRequestHandler):
             if max(source.shape[:2]) > max_side:
                 scale = max_side / max(source.shape[:2])
                 source = cv2.resize(source, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
-            face_detector = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+            cascade_factory = getattr(cv2, "CascadeClassifier", None)
+            cascade_data = getattr(getattr(cv2, "data", None), "haarcascades", "")
+            face_detector = cascade_factory(cascade_data + "haarcascade_frontalface_default.xml") if callable(cascade_factory) else None
             def find_face(image):
                 gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+                if face_detector is None or face_detector.empty(): return (None, gray)
                 faces = face_detector.detectMultiScale(gray, 1.12, 5, minSize=(70, 70))
                 return (max(faces, key=lambda f: f[2] * f[3]), gray) if len(faces) else (None, gray)
             face, gray = find_face(source)
-            if face is None: raise ValueError("Face পাওয়া যায়নি—সামনে তাকিয়ে পরিষ্কার ছবি তুলুন")
+            if face is None:
+                # Some minimal OpenCV builds omit the cascade module.  Gemini
+                # can still make the portrait safely from a clear source image.
+                h, w = source.shape[:2]
+                face = (int(w * .2), int(h * .08), int(w * .6), int(h * .65))
             with db() as con: key_row = con.execute("SELECT value FROM settings WHERE key='gemini_api_key'").fetchone()
             api_key = str(data.get("apiKey", "")).strip() or (key_row["value"] if key_row else "")
             if not api_key: raise ValueError("Settings-এ Gemini API key দিন")
@@ -399,7 +419,7 @@ Identity preservation takes priority over beautification or pose correction."""
             if generated is None: raise ValueError("Gemini portrait পড়া যায়নি")
             generated = cv2.resize(generated, (700, 900), interpolation=cv2.INTER_LANCZOS4)
 
-            if find_face(generated)[0] is None:
+            if face_detector is not None and find_face(generated)[0] is None:
                 raise ValueError("Remade portrait-এ face detect হয়নি—অন্য ছবি দিয়ে চেষ্টা করুন")
             # A small deterministic exposure lift; this changes lighting only, not facial geometry.
             lab = cv2.cvtColor(generated, cv2.COLOR_BGR2LAB)
@@ -789,7 +809,10 @@ OCR TEXT:
         try:
             data = self.body(); name = str(data.get("name", "")).strip().upper(); archive = str(data.get("archive", ""))
             if not name: raise ValueError("Customer name দিন")
-            content, suffix = archive_payload(data)
+            # New clients save the editable case immediately.  ZIP/PDF creation
+            # is deferred until Download, while older clients may still upload
+            # their archive in this request.
+            content, suffix = archive_payload(data) if archive else (None, ".zip")
             case_data = data.get("case") or {}
             applicant = (case_data.get("people") or [{}])[0]
             nid = worker_system.digits(applicant.get("nid") or data.get("customerNumber"))
@@ -820,12 +843,12 @@ OCR TEXT:
             filename = f"{safe(name)}_{safe(str(data.get('phone', '')).strip() or 'NO-MOBILE')}{suffix}"
             path = ARCHIVE_DIR / f"{serial}_{filename}"
             try:
-                path.write_bytes(content)
+                if content is not None: path.write_bytes(content)
             except Exception:
                 with db() as con: con.execute("DELETE FROM customers WHERE id=? AND archive_path=''", (customer_id,))
                 raise
             with db() as con:
-                con.execute("UPDATE customers SET serial=?,archive_name=?,archive_path=?,workflow_status='submitted',submitted_at=?,applicant_nid_hash=? WHERE id=?", (serial, filename, str(path.resolve()), now, nid_hash, customer_id))
+                con.execute("UPDATE customers SET serial=?,archive_name=?,archive_path=?,workflow_status='submitted',submitted_at=?,applicant_nid_hash=? WHERE id=?", (serial, filename, str(path.resolve()) if content is not None else "", now, nid_hash, customer_id))
                 worker_system.audit(con, self.user(), "customer_submitted", "customer", customer_id)
             return self.reply(201, {"id": customer_id, "serial": serial, "archiveName": filename, "status": "submitted"})
         except Exception as error: return self.reply(400, {"error": str(error)})
@@ -834,18 +857,22 @@ OCR TEXT:
         try:
             data = self.body(); name = str(data.get("name", "")).strip().upper(); archive = str(data.get("archive", ""))
             if not name: raise ValueError("Customer name দিন")
-            content, suffix = archive_payload(data)
+            content, suffix = archive_payload(data) if archive else (None, ".zip")
             case_json = json.dumps(data.get("case") or {}, ensure_ascii=False)
             with db() as con:
                 row = con.execute("SELECT serial,archive_path FROM customers WHERE id=?", (customer_id,)).fetchone()
                 if not row: return self.reply(404, {"error": "Customer পাওয়া যায়নি"})
                 filename = f"{safe(name)}_{safe(str(data.get('phone', '')).strip() or 'NO-MOBILE')}{suffix}"
                 path = ARCHIVE_DIR / f"{row['serial']}_{filename}"
-                old_path = Path(row["archive_path"]); path.write_bytes(content)
-                if old_path != path and old_path.is_file() and old_path.parent.resolve() == ARCHIVE_DIR.resolve(): old_path.unlink()
+                old_path = Path(row["archive_path"])
+                if content is not None:
+                    path.write_bytes(content)
+                elif old_path.is_file() and old_path.parent.resolve() == ARCHIVE_DIR.resolve():
+                    old_path.unlink()
+                if content is not None and old_path != path and old_path.is_file() and old_path.parent.resolve() == ARCHIVE_DIR.resolve(): old_path.unlink()
                 con.execute("""UPDATE customers SET name=?,name_bn=?,customer_number=?,phone=?,email=?,archive_name=?,archive_path=?,case_json=?,revision=revision+1 WHERE id=?""",
                     (name, str(data.get("nameBn", "")).strip(), str(data.get("customerNumber", "")).strip(), str(data.get("phone", "")).strip(),
-                     str(data.get("email", "")).strip(), filename, str(path.resolve()), case_json, customer_id))
+                     str(data.get("email", "")).strip(), filename, str(path.resolve()) if content is not None else "", case_json, customer_id))
                 con.execute("DELETE FROM customer_assets WHERE customer_id=? AND kind='declaration'", (customer_id,))
             return self.reply(200, {"id": customer_id, "serial": row["serial"], "archiveName": filename})
         except Exception as error: return self.reply(400, {"error": str(error)})

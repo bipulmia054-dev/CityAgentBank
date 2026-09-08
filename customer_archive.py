@@ -105,3 +105,21 @@ def legacy_customer_zip(row,case,original_pdf):
         if any(p.get('photo') for p in people):put('Passport_Photos_Print.pdf',photo_print_pdf(people,case.get('photoPrintLayout') or {}))
         put('Print_Instructions.txt','Print at Actual size / 100% on A4. Borderless output depends on your printer.\r\nEdit the customer in Document Studio to move photos, then Save again.\r\n')
     return out.getvalue()
+
+def case_customer_zip(row, case):
+    """Create the standard archive only when it is actually downloaded.
+
+    New submissions keep the editable case data in SQLite first, so a worker is
+    not blocked by client-side PDF/ZIP rendering.  The small summary PDF keeps
+    the legacy archive layout compatible with the existing downloader.
+    """
+    summary = io.BytesIO()
+    pdf = canvas.Canvas(summary, pagesize=A4, pageCompression=1)
+    pdf.setFont("Helvetica-Bold", 16)
+    pdf.drawString(36, 800, "Customer application record")
+    pdf.setFont("Helvetica", 10)
+    pdf.drawString(36, 780, "Name: " + str(row.get("name") or ""))
+    pdf.drawString(36, 764, "Phone: " + str(row.get("phone") or ""))
+    pdf.drawString(36, 748, "Generated when the archive was downloaded.")
+    pdf.save()
+    return legacy_customer_zip(row, case, summary.getvalue())

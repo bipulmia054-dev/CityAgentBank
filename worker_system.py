@@ -458,7 +458,7 @@ def dispatch(handler, method, path, db, data_dir, digest):
             if not profile: return handler.reply(404, {"error": "User পাওয়া যায়নি"})
             earned, reserved, available = balance(con, profile["id"])
             transactions = [dict(r) for r in con.execute("SELECT id,type,amount_paisa,reason,created_at FROM transactions WHERE user_id=? ORDER BY id DESC LIMIT 100", (profile["id"],)).fetchall()]
-            customers = [dict(r) for r in con.execute("SELECT id,serial,name,workflow_status,created_at FROM customers WHERE created_by=? ORDER BY id DESC LIMIT 100", (profile["username"],)).fetchall()]
+            customers = [dict(r) for r in con.execute("SELECT id,serial,name,customer_number,phone,workflow_status,created_at FROM customers WHERE created_by=? ORDER BY id DESC LIMIT 100", (profile["username"],)).fetchall()]
             children = [dict(r) for r in con.execute("SELECT id,username,full_name,role,status,referral_code FROM users WHERE referred_by=? ORDER BY id", (profile["id"],)).fetchall()]
         return handler.reply(200, {"profile": {**dict(profile), "payout_account_number": ("******" + profile["payout_account_number"][-4:]) if profile["payout_account_number"] else "", "earned": earned, "reserved": reserved, "available": available, "transactions": transactions, "customers": customers, "children": children}})
 
