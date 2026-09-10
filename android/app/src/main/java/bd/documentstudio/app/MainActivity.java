@@ -100,20 +100,25 @@ public class MainActivity extends ComponentActivity {
         web = new WebView(this); content.addView(web, new android.widget.FrameLayout.LayoutParams(-1, -1));
         loading = new LinearLayout(this); loading.setOrientation(LinearLayout.VERTICAL); loading.setGravity(android.view.Gravity.CENTER); loading.setBackgroundColor(Color.WHITE); loading.setPadding(30,30,30,30);
         android.widget.ImageView logo = new android.widget.ImageView(this);
-        logo.setImageResource(R.drawable.city_logo); logo.setContentDescription("City Amjhupi");
+        logo.setImageResource(R.drawable.city_logo); logo.setContentDescription("DCW-CITY BANK");
         logo.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
-        loading.addView(logo, new LinearLayout.LayoutParams(-1, (int)(100 * getResources().getDisplayMetrics().density)));
+        int logoSize = (int)(92 * getResources().getDisplayMetrics().density);
+        loading.addView(logo, new LinearLayout.LayoutParams(logoSize, logoSize));
+        android.view.animation.AlphaAnimation blink = new android.view.animation.AlphaAnimation(.55f, 1f);
+        blink.setDuration(700); blink.setRepeatMode(android.view.animation.Animation.REVERSE); blink.setRepeatCount(android.view.animation.Animation.INFINITE);
+        logo.startAnimation(blink);
         ProgressBar progress = new ProgressBar(this); loading.addView(progress);
-        status = new TextView(this); status.setGravity(android.view.Gravity.CENTER); status.setTextColor(Color.rgb(32,42,56)); status.setTextSize(18); status.setPadding(16,24,16,16); status.setText("City Amjhupi লোড হচ্ছে…"); loading.addView(status);
+        status = new TextView(this); status.setGravity(android.view.Gravity.CENTER); status.setTextColor(Color.rgb(32,42,56)); status.setTextSize(18); status.setPadding(16,24,16,16); status.setText("DCW-CITY BANK লোড হচ্ছে…"); loading.addView(status);
         Button retry = new Button(this); retry.setText("আবার লোড করুন"); retry.setOnClickListener(v -> reloadCurrentPage()); loading.addView(retry);
         content.addView(loading, new android.widget.FrameLayout.LayoutParams(-1,-1)); setContentView(root);
         WebSettings config = web.getSettings(); config.setJavaScriptEnabled(true); config.setDomStorageEnabled(true);
+        web.setOverScrollMode(android.view.View.OVER_SCROLL_NEVER);
         web.addJavascriptInterface(new Object() { @android.webkit.JavascriptInterface public void reload() { runOnUiThread(() -> reloadCurrentPage()); } }, "DocumentStudioAndroid");
         config.setAllowFileAccess(false); config.setAllowContentAccess(false); config.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         config.setUserAgentString(config.getUserAgentString() + " DocumentStudioAndroid/2");
         CookieManager.getInstance().setAcceptCookie(true); CookieManager.getInstance().setAcceptThirdPartyCookies(web, false);
         web.setWebViewClient(new WebViewClient() {
-            @Override public void onPageStarted(WebView view, String url, android.graphics.Bitmap icon) { pageFailed = false; loading.setVisibility(android.view.View.VISIBLE); status.setText("City Amjhupi লোড হচ্ছে…"); }
+            @Override public void onPageStarted(WebView view, String url, android.graphics.Bitmap icon) { pageFailed = false; loading.setVisibility(android.view.View.VISIBLE); status.setText("DCW-CITY BANK লোড হচ্ছে…"); }
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 String url = request.getUrl().toString();
                 if (request.isForMainFrame() && trusted(view.getUrl()) && url.startsWith("documentstudio://")) {

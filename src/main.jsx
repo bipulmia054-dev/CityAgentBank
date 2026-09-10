@@ -2946,6 +2946,8 @@ function App() {
   useEffect(() => {
     window.documentStudioGoBack = () => {
       if (!auth?.authenticated) return false;
+      if (showSettings) { setShowSettings(false); return true; }
+      if (confirmClear) { setConfirmClear(false); return true; }
       if (window.documentStudioPortalGoBack?.()) return true;
       if (step === 2) { setStep(1); return true; }
       if (step === 3) { setStep(2); return true; }
@@ -2955,7 +2957,7 @@ function App() {
       return false;
     };
     return () => { delete window.documentStudioGoBack; };
-  }, [auth, step]);
+  }, [auth, step, showSettings, confirmClear]);
   async function clearCurrentDraft() {
     setConfirmClear(false);
     try {

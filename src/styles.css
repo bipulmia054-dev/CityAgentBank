@@ -22,6 +22,7 @@
 html, body {
   margin: 0;
   min-height: 100%;
+  overscroll-behavior-y: none;
   font-family: "Hind Siliguri", sans-serif;
   color: #252525;
   background: #fff;
