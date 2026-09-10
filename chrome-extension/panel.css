@@ -5,3 +5,4 @@ body{font-family:"Noto Sans Bengali",sans-serif}figure{margin:12px 0}figure butt
 
 header .brandLogo{width:76px;height:34px;object-fit:contain;background:white;border-radius:4px;flex-shrink:0}header>div{flex:1;min-width:0}
 .identityPair{display:grid;grid-template-columns:1fr 1fr;gap:8px}.identityPair figure{min-width:0}.identityPair .photo{width:100%;height:150px;object-fit:contain}.caseSummary,.completeAccount{background:#fff;border:1px solid #dbe5df;border-radius:10px;padding:14px;margin:14px 0}.caseSummary h3,.completeAccount h3{margin-bottom:6px}.caseSummary small{color:#5d7069}.completeAccount{display:grid;gap:9px}.completeAccount h3{margin:0}.completeAccount button{width:100%}
+.documentPair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.documentPair>section{border:1px solid #d8dee8;border-radius:9px;padding:9px}.documentPair h4{margin:0 0 7px}@media(max-width:520px){.documentPair{grid-template-columns:1fr}}

@@ -818,7 +818,7 @@ OCR TEXT:
             nid = worker_system.digits(applicant.get("nid") or data.get("customerNumber"))
             nid_hash = worker_system.blind_index(DATA_DIR, nid)
             current = self.current_user()
-            if current["role"] == "worker":
+            if worker_system.is_collection_role(current["role"]):
                 people = case_data.get("people") or []
                 nominee = people[1] if len(people) > 1 else {}
                 declaration = case_data.get("declaration") or {}

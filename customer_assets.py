@@ -26,7 +26,7 @@ def binary(handler, content, mime, name):
     handler.end_headers(); handler.wfile.write(content)
 
 def dispatch(handler, method, path, db, archive_dir):
-    match = re.fullmatch(r'/api/customers/(\d+)/(extension|revision|signature-card|declaration)', path)
+    match = re.fullmatch(r'/api/customers/(\d+)/(extension|revision|signature-card|income-declaration-card|declaration)', path)
     if not match: return False
     if not handler.authorized(): return None
     if not handler.is_admin(): return handler.reply(403, {'error':'শুধু অনুমোদিত Admin এই ফাইল দেখতে বা পরিবর্তন করতে পারবেন'})
@@ -43,6 +43,10 @@ def dispatch(handler, method, path, db, archive_dir):
                 if action == 'signature-card':
                     docs = [d for d in case.get('docs', []) if d.get('kind') == 'signature_card']
                     return handler.reply(200, {'documents':docs,'revision':row['revision']})
+                if action == 'income-declaration-card':
+                    asset = con.execute('SELECT content,mime FROM customer_assets WHERE customer_id=? AND kind=?',(customer_id,'declaration_card')).fetchone()
+                    if not asset: return handler.reply(200, {'documents':[],'revision':row['revision']})
+                    return handler.reply(200, {'documents':[{'kind':'income_declaration_card','name':'Income Declaration','pages':['data:'+asset['mime']+';base64,'+base64.b64encode(asset['content']).decode('ascii')]}],'revision':row['revision']})
                 asset = con.execute('SELECT content,mime FROM customer_assets WHERE customer_id=? AND kind=?',(customer_id,'declaration')).fetchone()
                 if asset: return binary(handler, asset['content'], asset['mime'], 'Income_Declaration.pdf')
                 archive = Path(row['archive_path'])
@@ -51,11 +55,11 @@ def dispatch(handler, method, path, db, archive_dir):
                         name = next((n for n in zipped.namelist() if n.endswith('/Income_Declaration.pdf')), None)
                         if name: return binary(handler, zipped.read(name), 'application/pdf', 'Income_Declaration.pdf')
                 return handler.reply(404, {'error':'PDF তৈরি করে Save করুন'})
-        if method != 'POST' or action not in ('signature-card','declaration'): return handler.reply(405, {'error':'Method not allowed'})
+        if method != 'POST' or action not in ('signature-card','income-declaration-card','declaration'): return handler.reply(405, {'error':'Method not allowed'})
         data = handler.body(30 * 1024 * 1024)
-        if action == 'signature-card':
+        if action in ('signature-card','income-declaration-card'):
             source = data.get('image', '')
-            if not isinstance(source,str) or not re.match(r'^data:image/(jpeg|png|webp);base64,', source): raise ValueError('সঠিক signature card ছবি দিন')
+            if not isinstance(source,str) or not re.match(r'^data:image/(jpeg|png|webp);base64,', source): raise ValueError('সঠিক JPG/PNG ছবি দিন')
             image = Image.open(io.BytesIO(base64.b64decode(source.split(',',1)[1], validate=True)))
             if image.width * image.height > 25000000: raise ValueError('ছবি অতিরিক্ত বড়')
             image.load(); image = image.convert('RGB'); image.thumbnail((2480,3508))
@@ -80,6 +84,8 @@ def dispatch(handler, method, path, db, archive_dir):
                 docs = [d for d in case.get('docs',[]) if d.get('kind') != 'signature_card']
                 docs.append({'id':str(uuid.uuid4()),'kind':'signature_card','name':'Signed Signature Card','pages':[source]})
                 case['docs'] = docs
+            elif action == 'income-declaration-card':
+                con.execute('INSERT OR REPLACE INTO customer_assets(customer_id,kind,content,mime) VALUES(?,?,?,?)',(customer_id,'declaration_card',output.getvalue(),'image/jpeg'))
             else:
                 case['declaration'] = {**case.get('declaration',{}), **details, 'busy':False}
                 con.execute('INSERT OR REPLACE INTO customer_assets(customer_id,kind,content,mime) VALUES(?,?,?,?)',(customer_id,'declaration',content,'application/pdf'))
@@ -96,7 +102,8 @@ def updated_archive(content, row, db):
     cards = [d for d in case.get('docs',[]) if d.get('kind') == 'signature_card']
     with db() as con:
         asset = con.execute('SELECT content FROM customer_assets WHERE customer_id=? AND kind=?',(row['id'],'declaration')).fetchone()
-    if not cards and not asset: return content
+        declaration_card = con.execute('SELECT content FROM customer_assets WHERE customer_id=? AND kind=?',(row['id'],'declaration_card')).fetchone()
+    if not cards and not asset and not declaration_card: return content
     output = io.BytesIO()
     with zipfile.ZipFile(io.BytesIO(content)) as original, zipfile.ZipFile(output,'w',zipfile.ZIP_DEFLATED) as target:
         root = original.namelist()[0].split('/')[0]
@@ -109,4 +116,5 @@ def updated_archive(content, row, db):
                 from customer_archive import jpg
                 target.writestr(f'{root}/Signed_Signature_Card_{i+1}.jpg',jpg(page))
         if asset: target.writestr(f'{root}/Income_Declaration.pdf',asset['content'])
+        if declaration_card: target.writestr(f'{root}/Income_Declaration.jpg',declaration_card['content'])
     return output.getvalue()

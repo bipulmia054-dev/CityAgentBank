@@ -47,7 +47,7 @@ async function search() {
 function fields(container, values) {
   const list = document.createElement('dl');
   for (const [label, value] of values) {
-    const copyValue = /date|dob|birth|issue|expiry/i.test(label) ? ddmmyyyy(value) : value;
+    const copyValue = /date|dob|birth|issue|expiry/i.test(label) ? ddmmyyyy(value) : (/[A-Za-z]/.test(String(value || '')) ? String(value).toUpperCase() : value);
     const field = document.createElement('div'); field.className = 'field';
     const dt = document.createElement('dt'); dt.textContent = label;
     const dd = document.createElement('dd'), text = document.createElement('span'); text.textContent = copyValue || 'দেওয়া নেই'; if (!copyValue) text.className = 'missing'; dd.append(text);
@@ -89,12 +89,18 @@ async function compressedJpeg(source, maximumBytes = 200 * 1024) {
   throw new Error('ছবিটি 200 KB-এর নিচে compress করা যায়নি');
 }
 async function downloadImage(source, name) { downloadBlob(await compressedJpeg(source),`${name}.jpg`); }
-function photo(container, source, label) {
+function applicantFilename(part) {
+  const applicant = casePeople(selectedCase || {}).applicant || {};
+  const name = String(applicant.name || applicant.nameBn || selected?.name || 'APPLICANT').toUpperCase().replace(/[^A-Z0-9]+/g,'_').replace(/^_|_$/g,'') || 'APPLICANT';
+  return `${name}_${part}`;
+}
+function photo(container, source, label, filenamePart = '') {
   const src = safeImage(source); if (!src) return;
   const figure=document.createElement('figure');
   const image = document.createElement('img'); image.src=src; image.alt=label; image.className='photo'; image.loading='lazy';
   const download=document.createElement('button');download.textContent=label+' Download (≤200 KB)';
-  download.addEventListener('click',async()=>{download.disabled=true;try{await downloadImage(src,`${selected?.serial||'Customer'}_${label}`);}catch(error){showError(error);}finally{download.disabled=false;}});
+  const filePart=String(filenamePart || label).toUpperCase().replace(/[^A-Z0-9]+/g,'_').replace(/^_|_$/g,'');
+  download.addEventListener('click',async()=>{download.disabled=true;try{await downloadImage(src,applicantFilename(filePart));}catch(error){showError(error);}finally{download.disabled=false;}});
   const personIndex=selectedCase?.people?.findIndex(person=>person.photo===source) ?? -1;
   if(personIndex>=0 && label.includes('Photo')) {
     const process=document.createElement('button');process.textContent='AI দিয়ে ছবি তৈরি করুন';
@@ -127,11 +133,11 @@ function photo(container, source, label) {
 }
 function personCard(label, person, fallback = {}, nominee = false) {
   const card=document.createElement('section');card.className='person';const title=document.createElement('h3');title.textContent=label;card.append(title);
-  photo(card,person.photo,`${label} Photo`);
+  photo(card,person.photo,`${label} Photo`,nominee?'NOMINEE_PHOTO':'PHOTO');
   const ids=document.createElement('div');ids.className='identityPair';
-  photo(ids,person.idFront,`${label} ID Front`); photo(ids,person.idBack,`${label} ID Back`); card.append(ids);
+  photo(ids,person.idFront,`${label} ID Front`,nominee?'NOMINEE_NID_FRONT':'NID_FRONT'); photo(ids,person.idBack,`${label} ID Back`,nominee?'NOMINEE_NID_BACK':'NID_BACK'); card.append(ids);
   if(nominee) {
-    fields(card,[["Relationship with applicant",person.relation||person.relationship||person.relationToApplicant||""],["Full address",englishLocation(person.addressEn||person.addressBn||"")]]);
+    fields(card,[["Nominee name",String(person.name||person.nameBn||"").toUpperCase()],["Nominee NID number",person.nid||""],["Date of birth",person.dob||""],["Relationship with applicant",String(person.relation||person.relationship||person.relationToApplicant||"").toUpperCase()],["Full address",englishLocation(person.addressEn||person.addressBn||"")]]);
   } else {
     fields(card,[["Issue date",person.issueDate||person.issue_date||""],["Issue place",englishLocation(person.issuePlaceEn||person.issue_place_en||person.issuePlace||person.issue_place||"")],["Applicant name",person.name||person.nameBn||fallback.name||""],["Applicant NID number",person.nid||fallback.customer_number||""],["Date of birth",person.dob||""],["Father's name",person.fatherNameEn||person.fatherNameBn||""],["Mother's name",person.motherNameEn||person.motherNameBn||""],["Phone number",person.phone||fallback.phone||""],["Email ID",person.email||fallback.email||""],["Address",englishLocation(person.addressEn||person.addressBn||"")]]);
   }
@@ -141,12 +147,13 @@ async function signatureCards() {
   if(!selected)return;
   let section=document.getElementById('signature-cards');
   if(!section){section=document.createElement('section');section.id='signature-cards';$('record-content').append(section);}
-  section.replaceChildren();const title=document.createElement('h3');title.textContent='Signature Card';section.append(title);
-  const id=selected.id;const loading=document.createElement('p');loading.textContent='Loading signature card…';section.append(loading);const result=await api(`/api/customers/${id}/signature-card`);
+  section.replaceChildren();const title=document.createElement('h3');title.textContent='Signature Card & Income Declaration';section.append(title);
+  const id=selected.id;const loading=document.createElement('p');loading.textContent='Loading documents…';section.append(loading);const [result,declaration]=await Promise.all([api(`/api/customers/${id}/signature-card`),api(`/api/customers/${id}/income-declaration-card`)]);
   if(selected?.id!==id)return;
   section.replaceChildren(title);
-  if(!result.documents?.length){const p=document.createElement('p');p.textContent='Admin card upload করলে এখানে স্বয়ংক্রিয়ভাবে দেখা যাবে।';const reload=document.createElement('button');reload.textContent='Signature Card Reload';reload.addEventListener('click',async()=>{reload.disabled=true;try{await signatureCards();}catch(error){showError(error);}finally{reload.disabled=false;}});section.append(p,reload);}
-  for(const doc of result.documents||[])for(const [i,page] of (doc.pages||[]).entries())photo(section,page,`Signature Card ${i+1}`);
+  const grid=document.createElement('div');grid.className='documentPair';
+  const card=(heading,documents,filePart)=>{const box=document.createElement('section');const h=document.createElement('h4');h.textContent=heading;box.append(h);if(documents?.length){for(const doc of documents)for(const page of doc.pages||[])photo(box,page,filePart,filePart);}else{const p=document.createElement('p');p.textContent='Admin upload করলে এখানে দেখা যাবে।';box.append(p);}const reload=document.createElement('button');reload.textContent=`${heading} Reload`;reload.addEventListener('click',async()=>{reload.disabled=true;try{await signatureCards();}catch(error){showError(error);}finally{reload.disabled=false;}});box.append(reload);return box;};
+  grid.append(card('Signature Card',result.documents,'SIGNATURE_CARD'),card('Income Declaration',declaration.documents,'INCOME_DECLARATION'));section.append(grid);
 }
 function declarationCard(caseData) {
   const card=document.createElement('section');card.className='declaration';const title=document.createElement('h3');title.textContent='আয়ের ঘোষণাপত্র';card.append(title);

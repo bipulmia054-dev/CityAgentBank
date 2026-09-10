@@ -42,7 +42,8 @@ def initialize(con, data_dir):
         "nid_hash TEXT DEFAULT ''", "nid_last4 TEXT DEFAULT ''", "registration_json TEXT DEFAULT ''",
         "approved_by TEXT DEFAULT ''", "approved_at TEXT DEFAULT ''", "rejection_reason TEXT DEFAULT ''",
         "referral_code TEXT DEFAULT ''", "referred_by INTEGER", "profile_json TEXT DEFAULT ''",
-        "nid_number TEXT DEFAULT ''"
+        "nid_number TEXT DEFAULT ''", "commission_enabled INTEGER NOT NULL DEFAULT 0",
+        "commission_percent REAL NOT NULL DEFAULT 10"
     ):
         add_column(con, "users", definition)
     for definition in (
@@ -133,6 +134,21 @@ def is_admin_role(role):
     return role in ("master_admin", "admin", "subadmin")
 
 
+def is_collection_role(role):
+    return role in ("worker", "area_manager")
+
+
+def subordinate_ids(con, manager_id):
+    """Return every descendant once; cycles cannot produce duplicate credit."""
+    seen, pending = set(), [manager_id]
+    while pending:
+        parent = pending.pop()
+        for row in con.execute("SELECT id FROM users WHERE referred_by=?", (parent,)):
+            if row["id"] not in seen:
+                seen.add(row["id"]); pending.append(row["id"])
+    return sorted(seen)
+
+
 def ensure_master_admin(con):
     master = con.execute("SELECT * FROM users WHERE username=? COLLATE NOCASE", ("Bipul",)).fetchone()
     salt = secrets.token_hex(16)
@@ -175,17 +191,36 @@ def award(con, worker, customer_id, event_key, kind, amount, reason, actor):
         return
     notify(con, worker["id"], "নতুন আয় যোগ হয়েছে", f"{reason}: ৳{amount / 100:g}")
     if worker["referred_by"] and kind in ("collection_reward", "completion_reward", "bonus", "target_bonus") and amount > 0:
-        referrer = con.execute("SELECT id,status FROM users WHERE id=?", (worker["referred_by"],)).fetchone()
-        if referrer and referrer["status"] == "approved":
+        referrer = con.execute("SELECT id,status,role FROM users WHERE id=?", (worker["referred_by"],)).fetchone()
+        if referrer and referrer["status"] == "approved" and referrer["role"] != "area_manager":
             rate_row = con.execute("SELECT value FROM settings WHERE key='referral_percent'").fetchone()
             commission = round(amount * float(rate_row[0] if rate_row else 10) / 100)
             con.execute("""INSERT OR IGNORE INTO transactions(user_id,customer_id,event_key,type,amount_paisa,reason,created_by,created_at,source_user_id)
                 VALUES(?,?,?,?,?,?,?,?,?)""", (referrer["id"], customer_id, "referral:" + event_key,
                 "referral_commission", commission, f"{worker['full_name'] or worker['username']}-এর আয়ের referral commission", actor, now(), worker["id"]))
             notify(con, referrer["id"], "Referral commission", f"৳{commission / 100:g} যোগ হয়েছে")
+    if kind in ("collection_reward", "completion_reward", "bonus", "target_bonus") and amount > 0:
+        # Every eligible manager ancestor receives at most one entry per source
+        # event.  The manager id is part of event_key, so retries cannot double-pay.
+        current = worker["referred_by"]
+        visited = set()
+        while current and current not in visited:
+            visited.add(current)
+            manager = con.execute("SELECT id,full_name,username,role,status,commission_enabled,commission_percent,referred_by FROM users WHERE id=?", (current,)).fetchone()
+            if not manager: break
+            if manager["role"] == "area_manager" and manager["status"] == "approved" and manager["commission_enabled"]:
+                commission = round(amount * float(manager["commission_percent"] or 0) / 100)
+                if commission > 0:
+                    result = con.execute("""INSERT OR IGNORE INTO transactions(user_id,customer_id,event_key,type,amount_paisa,reason,created_by,created_at,source_user_id)
+                        VALUES(?,?,?,?,?,?,?,?,?)""", (manager["id"], customer_id, f"area:{manager['id']}:{event_key}", "area_manager_commission", commission,
+                        f"{worker['full_name'] or worker['username']}-এর আয়ের area manager commission", actor, now(), worker["id"]))
+                    if result.rowcount: notify(con, manager["id"], "Area manager commission", f"৳{commission / 100:g} যোগ হয়েছে")
+            current = manager["referred_by"]
 
 
 def target_progress(con, user_id):
+    role = con.execute("SELECT role FROM users WHERE id=?", (user_id,)).fetchone()
+    if not role or role["role"] != "area_manager": return []
     stamp = now()
     rows = con.execute("""SELECT * FROM targets WHERE active=1 AND starts_at<=? AND ends_at>=?
         AND (user_id IS NULL OR user_id=?) ORDER BY id DESC""", (stamp, stamp, user_id)).fetchall()
@@ -249,9 +284,27 @@ def dispatch(handler, method, path, db, data_dir, digest):
             totals = {r["type"]: r["total"] for r in con.execute("SELECT type,COALESCE(SUM(amount_paisa),0) total FROM transactions WHERE user_id=? GROUP BY type", (user["id"],))}
             targets = target_progress(con, user["id"])
             notifications = [dict(r) for r in con.execute("SELECT id,title,message,created_at FROM notifications WHERE user_id=? AND read_at='' ORDER BY id DESC LIMIT 10", (user["id"],))]
+            management = None
+            if user["role"] == "area_manager":
+                descendants = subordinate_ids(con, user["id"])
+                if descendants:
+                    marks = ",".join("?" for _ in descendants)
+                    users = [dict(r) for r in con.execute(f"""SELECT u.id,u.full_name,u.phone,u.username,u.role,
+                        COALESCE(SUM(t.amount_paisa),0) income FROM users u LEFT JOIN transactions t ON t.user_id=u.id
+                        WHERE u.id IN ({marks}) GROUP BY u.id ORDER BY u.full_name""", descendants)]
+                    statuses = {r["workflow_status"]:r["count"] for r in con.execute(f"""SELECT c.workflow_status,COUNT(*) count FROM customers c
+                        JOIN users u ON u.username=c.created_by WHERE u.id IN ({marks}) GROUP BY c.workflow_status""", descendants)}
+                    records = []
+                    for row in con.execute(f"""SELECT c.serial,c.name,c.phone,c.workflow_status,c.case_json,u.full_name collector_name,u.phone collector_phone
+                        FROM customers c JOIN users u ON u.username=c.created_by WHERE u.id IN ({marks}) ORDER BY c.id DESC LIMIT 200""", descendants):
+                        case = json.loads(row["case_json"] or "{}")
+                        applicant = (case.get("people") or [{}])[0]
+                        records.append({"serial":row["serial"],"name":row["name"],"phone":row["phone"],"status":row["workflow_status"],"address":applicant.get("addressEn") or applicant.get("addressBn") or "", "collectorName":row["collector_name"],"collectorPhone":row["collector_phone"]})
+                    management = {"users":users,"counts":statuses,"customers":records}
+                else: management = {"users":[],"counts":{},"customers":[]}
         return handler.reply(200, {"counts": counts, "earned": earned, "reserved": reserved, "available": available,
             "withdrawn": reserved, "bonus": totals.get("bonus",0)+totals.get("target_bonus",0),
-            "referralIncome": totals.get("referral_commission",0), "targets": targets, "notifications": notifications})
+            "referralIncome": totals.get("referral_commission",0)+totals.get("area_manager_commission",0), "targets": targets, "notifications": notifications, "management": management})
 
     if path == "/api/worker/customers" and method == "GET":
         with db() as con:
@@ -381,7 +434,7 @@ def dispatch(handler, method, path, db, data_dir, digest):
 
     if path == "/api/admin/dashboard" and method == "GET":
         with db() as con:
-            users = con.execute("SELECT status,COUNT(*) count FROM users WHERE role='worker' GROUP BY status").fetchall()
+            users = con.execute("SELECT status,COUNT(*) count FROM users WHERE role IN ('worker','area_manager') GROUP BY status").fetchall()
             cases = con.execute("SELECT workflow_status,COUNT(*) count FROM customers GROUP BY workflow_status").fetchall()
             total_paid = con.execute("SELECT COALESCE(SUM(amount_paisa),0) FROM transactions").fetchone()[0]
         return handler.reply(200, {"users": {r[0]: r[1] for r in users}, "cases": {r[0]: r[1] for r in cases}, "totalRewards": total_paid})
@@ -393,7 +446,7 @@ def dispatch(handler, method, path, db, data_dir, digest):
                 COALESCE(SUM(CASE WHEN t.type='bonus' THEN t.amount_paisa ELSE 0 END),0) bonus,
                 COALESCE(SUM(CASE WHEN t.type='target_bonus' THEN t.amount_paisa ELSE 0 END),0) target_bonus,
                 COALESCE(SUM(CASE WHEN t.type='referral_commission' THEN t.amount_paisa ELSE 0 END),0) referral_income
-                FROM users u LEFT JOIN transactions t ON t.user_id=u.id WHERE u.role='worker' GROUP BY u.id ORDER BY u.id DESC""")]
+                FROM users u LEFT JOIN transactions t ON t.user_id=u.id WHERE u.role IN ('worker','area_manager') GROUP BY u.id ORDER BY u.id DESC""")]
             for item in workers:
                 paid = con.execute("SELECT COALESCE(SUM(amount_paisa),0) FROM withdrawals WHERE user_id=? AND status IN ('requested','approved','paid')", (item["id"],)).fetchone()[0]
                 item["withdrawn"] = paid; item["balance"] = item["total_income"] - paid
@@ -411,7 +464,7 @@ def dispatch(handler, method, path, db, data_dir, digest):
             data = handler.body(8192); amount = round(float(data.get("amount", 0)) * 100); reason = str(data.get("reason", "")).strip(); worker_id = int(data.get("userId", 0))
             if not amount or not reason or not worker_id: raise ValueError("Worker, amount এবং কারণ দিন")
             with db() as con:
-                worker = con.execute("SELECT * FROM users WHERE id=? AND role='worker'", (worker_id,)).fetchone()
+                worker = con.execute("SELECT * FROM users WHERE id=? AND role IN ('worker','area_manager')", (worker_id,)).fetchone()
                 if not worker: raise ValueError("Worker পাওয়া যায়নি")
                 award(con, worker, None, "adjustment:" + secrets.token_hex(12), "manual_adjustment", amount, reason, user["username"])
                 audit(con, user["username"], "finance_adjusted", "user", worker_id, {"amountPaisa": amount, "reason": reason})
@@ -431,7 +484,7 @@ def dispatch(handler, method, path, db, data_dir, digest):
 
     if path == "/api/admin/users" and method == "GET":
         with db() as con:
-            rows = con.execute("SELECT id,username,full_name,phone,email,address,status,role,nid_last4,payout_account_name,payout_account_number,payout_branch,created_at,rejection_reason,referral_code,referred_by FROM users WHERE role IN ('worker','subadmin') ORDER BY id DESC").fetchall()
+            rows = con.execute("SELECT id,username,full_name,phone,email,address,status,role,nid_last4,payout_account_name,payout_account_number,payout_branch,created_at,rejection_reason,referral_code,referred_by,commission_enabled,commission_percent FROM users WHERE role IN ('worker','area_manager','subadmin') ORDER BY id DESC").fetchall()
         return handler.reply(200, {"users": [dict(r) for r in rows]})
 
     if path == "/api/admin/users" and method == "POST":
@@ -452,13 +505,13 @@ def dispatch(handler, method, path, db, data_dir, digest):
 
     if path == "/api/admin/referrals" and method == "GET":
         with db() as con:
-            rows = [dict(r) for r in con.execute("SELECT id,username,full_name,role,status,referral_code,referred_by,created_at FROM users WHERE role IN ('worker','subadmin') ORDER BY id").fetchall()]
+            rows = [dict(r) for r in con.execute("SELECT id,username,full_name,role,status,referral_code,referred_by,created_at FROM users WHERE role IN ('worker','area_manager','subadmin') ORDER BY id").fetchall()]
         return handler.reply(200, {"users": rows})
 
     match = re.fullmatch(r"/api/admin/users/(\d+)/profile", path)
     if match and method == "GET":
         with db() as con:
-            profile = con.execute("SELECT id,username,full_name,phone,email,address,status,role,nid_number,nid_last4,referral_code,referred_by,created_at,payout_account_name,payout_account_number,payout_branch FROM users WHERE id=? AND role IN ('worker','subadmin')", (int(match.group(1)),)).fetchone()
+            profile = con.execute("SELECT id,username,full_name,phone,email,address,status,role,nid_number,nid_last4,referral_code,referred_by,created_at,payout_account_name,payout_account_number,payout_branch,commission_enabled,commission_percent FROM users WHERE id=? AND role IN ('worker','area_manager','subadmin')", (int(match.group(1)),)).fetchone()
             if not profile: return handler.reply(404, {"error": "User পাওয়া যায়নি"})
             earned, reserved, available = balance(con, profile["id"])
             transactions = [dict(r) for r in con.execute("""SELECT t.id,t.type,t.amount_paisa,t.reason,t.reference,t.created_at,c.serial,c.name customer_name
@@ -474,7 +527,7 @@ def dispatch(handler, method, path, db, data_dir, digest):
             data = handler.body(8192); amount = round(float(data.get("amount", 0)) * 100); reason = str(data.get("reason", "")).strip()
             if not amount or not reason: raise ValueError("Amount এবং কারণ দিন")
             with db() as con:
-                target = con.execute("SELECT * FROM users WHERE id=? AND role IN ('worker','subadmin')", (int(match.group(1)),)).fetchone()
+                target = con.execute("SELECT * FROM users WHERE id=? AND role IN ('worker','area_manager','subadmin')", (int(match.group(1)),)).fetchone()
                 if not target: raise ValueError("User পাওয়া যায়নি")
                 award(con, target, None, "manual:" + secrets.token_hex(12), "manual_adjustment", amount, reason, user["username"])
                 audit(con, user["username"], "user_balance_adjusted", "user", target["id"], {"amountPaisa": amount, "reason": reason})
@@ -567,13 +620,20 @@ def dispatch(handler, method, path, db, data_dir, digest):
     match = re.fullmatch(r"/api/admin/users/(\d+)", path)
     if match and method == "PUT":
         try:
-            data = handler.body(16384); status = str(data.get("status", "")).strip(); new_password = str(data.get("newPassword", ""))
+            data = handler.body(16384); status = str(data.get("status", "")).strip(); new_password = str(data.get("newPassword", "")); requested_role = str(data.get("role", "")).strip()
             if status and status not in ("approved", "rejected", "suspended"): raise ValueError("Status সঠিক নয়")
             if new_password and len(new_password) < 8: raise ValueError("নতুন password কমপক্ষে ৮ অক্ষরের দিন")
             with db() as con:
-                current = con.execute("SELECT * FROM users WHERE id=? AND role IN ('worker','subadmin')", (int(match.group(1)),)).fetchone()
+                current = con.execute("SELECT * FROM users WHERE id=? AND role IN ('worker','area_manager','subadmin')", (int(match.group(1)),)).fetchone()
                 if not current: raise ValueError("Worker পাওয়া যায়নি")
                 if current["role"] == "subadmin" and user["role"] != "master_admin": raise ValueError("শুধু Master Admin Subadmin পরিবর্তন করতে পারবেন")
+                if requested_role and requested_role not in ("worker","area_manager"): raise ValueError("Role সঠিক নয়")
+                if requested_role and current["role"] == "subadmin": raise ValueError("Subadmin role পরিবর্তন করা যাবে না")
+                next_role = requested_role or current["role"]
+                commission_enabled = 1 if data.get("commissionEnabled") else 0 if "commissionEnabled" in data else current["commission_enabled"]
+                commission_percent = float(data.get("commissionPercent", current["commission_percent"]))
+                if not 0 <= commission_percent <= 100: raise ValueError("Commission percentage সঠিক নয়")
+                if next_role != "area_manager": commission_enabled = 0
                 values = {
                     "full_name": str(data.get("fullName", current["full_name"])).strip(), "phone": digits(data.get("phone", current["phone"])),
                     "email": str(data.get("email", current["email"])).strip(), "address": str(data.get("address", current["address"])).strip(),
@@ -581,11 +641,11 @@ def dispatch(handler, method, path, db, data_dir, digest):
                     "payout_account_number": digits(data.get("accountNumber", current["payout_account_number"])), "payout_branch": str(data.get("branch", current["payout_branch"])).strip()}
                 salt = secrets.token_hex(16) if new_password else current["salt"]
                 password_hash = hashlib.pbkdf2_hmac("sha256", new_password.encode(), bytes.fromhex(salt), 310000).hex() if new_password else current["password_hash"]
-                result = con.execute("""UPDATE users SET status=?,full_name=?,phone=?,email=?,address=?,nid_number=?,nid_hash=?,nid_last4=?,
-                    payout_account_name=?,payout_account_number=?,payout_branch=?,password_hash=?,salt=?,approved_by=?,approved_at=?,rejection_reason=? WHERE id=? AND role IN ('worker','subadmin')""",
-                    (status or current["status"], values["full_name"], values["phone"], values["email"], values["address"], values["nid_number"],
+                result = con.execute("""UPDATE users SET status=?,role=?,full_name=?,phone=?,email=?,address=?,nid_number=?,nid_hash=?,nid_last4=?,
+                    payout_account_name=?,payout_account_number=?,payout_branch=?,password_hash=?,salt=?,commission_enabled=?,commission_percent=?,approved_by=?,approved_at=?,rejection_reason=? WHERE id=? AND role IN ('worker','area_manager','subadmin')""",
+                    (status or current["status"], next_role, values["full_name"], values["phone"], values["email"], values["address"], values["nid_number"],
                      blind_index(data_dir, values["nid_number"]), values["nid_number"][-4:], values["payout_account_name"], values["payout_account_number"], values["payout_branch"],
-                     password_hash, salt, user["username"], now() if status == "approved" else current["approved_at"], str(data.get("reason", current["rejection_reason"]))[:500], int(match.group(1))))
+                     password_hash, salt, commission_enabled, commission_percent, user["username"], now() if status == "approved" else current["approved_at"], str(data.get("reason", current["rejection_reason"]))[:500], int(match.group(1))))
                 if not result.rowcount: raise ValueError("Worker পাওয়া যায়নি")
                 audit(con, user["username"], "worker_" + (status or "profile_edited"), "user", match.group(1), {"fields": list(data)})
             return handler.reply(200, {"ok": True})
@@ -648,10 +708,13 @@ def dispatch(handler, method, path, db, data_dir, digest):
             if metric not in ("approved","completed"):raise ValueError("Target metric সঠিক নয়")
             required=int(data.get("requiredCount",0)); bonus=round(float(data.get("bonus",0))*100)
             if not str(data.get("name","")).strip() or required<1 or bonus<1:raise ValueError("Target name, count এবং bonus দিন")
+            if not data.get("userId"): raise ValueError("Area Manager নির্বাচন করুন")
             with db() as con:
+                manager = con.execute("SELECT id FROM users WHERE id=? AND role='area_manager'", (int(data["userId"]),)).fetchone()
+                if not manager: raise ValueError("শুধু Area Manager-এর জন্য target করা যাবে")
                 con.execute("""INSERT INTO targets(name,metric,required_count,bonus_paisa,starts_at,ends_at,user_id,active,created_by,created_at)
                     VALUES(?,?,?,?,?,?,?,?,?,?)""",(str(data["name"]).strip(),metric,required,bonus,str(data["startsAt"]),str(data["endsAt"]),
-                    int(data["userId"]) if data.get("userId") else None,1,user["username"],now()))
+                    int(data["userId"]),1,user["username"],now()))
                 audit(con,user["username"],"target_created","target","new",data)
             return handler.reply(201,{"ok":True})
         except Exception as error:return handler.reply(400,{"error":str(error)})

@@ -2340,20 +2340,21 @@ function Access({ setupRequired, onAccess }) {
   );
 }
 
-function SignatureCardUpload({customer, close}) {
+function CustomerImageUpload({customer, close, kind, title}) {
   const [revision,setRevision]=useState(null),[picture,setPicture]=useState(""),[busy,setBusy]=useState(false),[message,setMessage]=useState("");
-  useEffect(()=>{fetch(`/api/customers/${customer.id}/signature-card`).then(readJson).then(result=>{if(result.error)throw new Error(result.error);setRevision(result.revision);setPicture(result.documents?.[0]?.pages?.[0]||"");}).catch(error=>setMessage(error.message));},[customer.id]);
+  useEffect(()=>{fetch(`/api/customers/${customer.id}/${kind}`).then(readJson).then(result=>{if(result.error)throw new Error(result.error);setRevision(result.revision);setPicture(result.documents?.[0]?.pages?.[0]||"");}).catch(error=>setMessage(error.message));},[customer.id,kind]);
   async function upload(image) {
     if(!image || revision===null)return;
-    setPicture(image);setBusy(true);setMessage("Signature card upload হচ্ছে…");
-    try {const response=await fetch(`/api/customers/${customer.id}/signature-card`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({image,revision})});const result=await readJson(response);if(!response.ok)throw new Error(result.error);setRevision(result.revision);setMessage("Signature card Save হয়েছে। Chrome extension-এও দেখা যাবে।");}
+    setPicture(image);setBusy(true);setMessage(`${title} upload হচ্ছে…`);
+    try {const response=await fetch(`/api/customers/${customer.id}/${kind}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({image,revision})});const result=await readJson(response);if(!response.ok)throw new Error(result.error);setRevision(result.revision);setMessage(`${title} Save হয়েছে। Chrome extension-এও দেখা যাবে।`);}
     catch(error){setMessage(error.message);}finally{setBusy(false);}
   }
-  return <div className="modalBackdrop"><section className="settingsModal"><button className="modalClose" disabled={busy} aria-label="Close signature upload" onClick={close}><X/></button><h2>Upload Signature Card</h2><p>{customer.serial} — {customer.name}</p>{revision!==null&&!busy&&<Capture title="Signed signature card scan করুন" value={picture} onChange={upload}/>}<p role="status">{message || "Camera বা Gallery থেকে card নিয়ে crop নিশ্চিত করুন।"}</p></section></div>;
+  return <div className="modalBackdrop"><section className="settingsModal"><button className="modalClose" disabled={busy} aria-label={`Close ${title} upload`} onClick={close}><X/></button><h2>Upload {title}</h2><p>{customer.serial} — {customer.name}</p>{revision!==null&&!busy&&<Capture title={`${title} scan করুন`} value={picture} onChange={upload}/>}<p role="status">{message || "Camera বা Gallery থেকে image নিয়ে crop নিশ্চিত করুন।"}</p></section></div>;
 }
 
 function Records({ onBack, onEditCase }) {
   const [signatureCustomer,setSignatureCustomer]=useState(null);
+  const [declarationCustomer,setDeclarationCustomer]=useState(null);
   const [query, setQuery] = useState("");
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -2416,7 +2417,8 @@ function Records({ onBack, onEditCase }) {
   }
   return (
     <div className="records">
-      {signatureCustomer && <SignatureCardUpload customer={signatureCustomer} close={()=>setSignatureCustomer(null)}/>}
+      {signatureCustomer && <CustomerImageUpload customer={signatureCustomer} kind="signature-card" title="Signature Card" close={()=>setSignatureCustomer(null)}/>}
+      {declarationCustomer && <CustomerImageUpload customer={declarationCustomer} kind="income-declaration-card" title="Income Declaration" close={()=>setDeclarationCustomer(null)}/>}
       <div className="recordsHead">
         <button className="secondary" onClick={onBack}>
           <ChevronLeft /> ফিরে যান
@@ -2483,6 +2485,7 @@ function Records({ onBack, onEditCase }) {
                 <FilePlus2 /> File Edit
               </button>
               <button className="recordEdit" onClick={() => setSignatureCustomer(row)}><Camera/> Upload Signature Card</button>
+              <button className="recordEdit" onClick={() => setDeclarationCustomer(row)}><Camera/> Upload Income Declaration</button>
               <button className="recordDelete" onClick={() => deleteRow(row)}>
                 <Trash2 /> Delete
               </button>
@@ -2603,6 +2606,7 @@ function PdfEmbed({ data, children }) {
 const money = paisa => `৳${((Number(paisa)||0)/100).toLocaleString("en-BD", {minimumFractionDigits:0,maximumFractionDigits:2})}`;
 const statusLabel = {submitted:"জমা হয়েছে",resubmitted:"আবার জমা হয়েছে",correction_required:"সংশোধন প্রয়োজন",data_approved:"Data approved",bank_processing:"Bank processing",completed:"Account completed",rejected:"বাতিল",pending:"Approval অপেক্ষায়",approved:"Approved",suspended:"Locked"};
 const isAdminRole = role => ["master_admin", "admin", "subadmin"].includes(role);
+const isCollectionRole = role => ["worker", "area_manager"].includes(role);
 
 function AdminUserControl({ users, reload, master, onOpenCustomer }) {
   const [form, setForm] = useState({ fullName: "", username: "", password: "", role: "worker" });
@@ -2658,6 +2662,35 @@ function AdminUserControl({ users, reload, master, onOpenCustomer }) {
     const result = await readJson(response); if (!response.ok) return alert(result.error);
     await reload(); await openProfile(profile.id);
   }
+  async function setAreaManager(enabled) {
+    const commissionPercent = enabled ? prompt("Area Manager commission percentage", profile.commission_percent ?? 10) : 0;
+    if (commissionPercent === null) return;
+    const response = await fetch(`/api/admin/users/${profile.id}`, {method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({role:enabled?"area_manager":"worker",commissionEnabled:enabled,commissionPercent:Number(commissionPercent)})});
+    const result = await readJson(response); if (!response.ok) return alert(result.error);
+    await reload(); await openProfile(profile.id);
+  }
+  async function configureCommission() {
+    const enabled = confirm("Area Manager commission চালু রাখবেন? OK = চালু, Cancel = বন্ধ");
+    const percent = enabled ? prompt("Commission percentage", profile.commission_percent ?? 10) : 0;
+    if (percent === null) return;
+    const response = await fetch(`/api/admin/users/${profile.id}`, {method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({commissionEnabled:enabled,commissionPercent:Number(percent)})});
+    const result = await readJson(response); if (!response.ok) return alert(result.error);
+    await openProfile(profile.id);
+  }
+  async function configureAreaManagerFor(item) {
+    const enable = item.role !== "area_manager";
+    const percent = enable ? prompt(`${item.full_name}-এর commission percentage`, item.commission_percent ?? 10) : 0;
+    if (percent === null) return;
+    const response = await fetch(`/api/admin/users/${item.id}`, {method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({role:enable?"area_manager":"worker",commissionEnabled:enable,commissionPercent:Number(percent)})});
+    const result=await readJson(response); if(!response.ok)return alert(result.error); await reload();
+  }
+  async function setManagerCommission(item) {
+    const enabled=confirm("Commission চালু রাখবেন? OK = চালু, Cancel = বন্ধ");
+    const percent=enabled?prompt("Commission percentage",item.commission_percent ?? 10):0;
+    if(percent===null)return;
+    const response=await fetch(`/api/admin/users/${item.id}`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({commissionEnabled:enabled,commissionPercent:Number(percent)})});
+    const result=await readJson(response);if(!response.ok)return alert(result.error);await reload();
+  }
   const byParent = parent => tree.filter(item => (item.referred_by || null) === parent);
   function Tree({ parent = null, level = 0 }) { return <div className="referralTreeLevel">{byParent(parent).map(item => <article key={item.id} style={{ marginLeft: level * 16 }}><div><b>{item.full_name}</b><small>@{item.username} • {item.role} • {item.referral_code}</small></div><button className="recordEdit" onClick={() => openProfile(item.id)}><UserRound size={14} /> Profile</button><Tree parent={item.id} level={level + 1} /></article>)}</div>; }
   return <>
@@ -2666,6 +2699,7 @@ function AdminUserControl({ users, reload, master, onOpenCustomer }) {
       <form className="portalPanel adminCreateUser" onSubmit={createUser}><div className="panelTitle"><div><small>ACCOUNT CONTROL</small><h2>নতুন account তৈরি করুন</h2></div><ShieldCheck /></div><label><span>পূর্ণ নাম</span><input required value={form.fullName} onChange={e => setForm({ ...form, fullName: e.target.value })} /></label><label><span>Username</span><input required value={form.username} onChange={e => setForm({ ...form, username: e.target.value })} /></label><label><span>Password</span><input required minLength="8" type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} /></label><label><span>Account type</span><select value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}><option value="worker">Worker</option>{master && <option value="subadmin">Subadmin</option>}</select></label><button className="primary full"><Plus /> Account Save করুন</button></form>
       <section className="portalPanel adminReferralPanel"><div className="panelTitle"><div><small>REFERRAL NETWORK</small><h2>Referral Tree</h2></div><span className="codeBadge">MASTER: {"MASTER-BIPUL"}</span></div><p className="secureNotice">Master referral code: <b>MASTER-BIPUL</b></p><Tree /></section>
     </div>
+    <section className="portalPanel"><div className="panelTitle"><div><small>AREA MANAGER CONTROL</small><h2>Temporary Area Manager</h2></div></div><p className="secureNotice">Area Manager নিজের customer collection করতে পারবেন এবং শুধু নিজের নিচের team দেখতে পারবেন।</p>{users.filter(item=>item.role!=="subadmin").map(item=><p className="ledgerRow" key={item.id}><span><b>{item.full_name}</b><small>{item.phone||"—"} • {item.role === "area_manager" ? `Area Manager • ${item.commission_enabled ? `${item.commission_percent}% commission ON` : "commission OFF"}` : "Worker"}</small></span>{item.role === "area_manager"?<span className="rowActions"><button onClick={()=>setManagerCommission(item)}>Commission সেটিং</button><button onClick={()=>configureAreaManagerFor(item)}>Manager বন্ধ</button></span>:<button className="recordEdit" onClick={()=>configureAreaManagerFor(item)}>Area Manager চালু</button>}</p>)}</section>
     <section className="portalPanel"><div className="panelTitle"><div><small>ALL ACCOUNTS</small><h2>Worker ও Subadmin</h2></div></div><div className="portalTable">{users.map(item => <article key={item.id}><div><b>{item.full_name}</b><small>@{item.username} • {item.role}</small></div><div><b>{item.referral_code}</b><small>{item.phone || "Phone নেই"}</small></div><span className={`statusTag ${item.status}`}>{statusLabel[item.status] || item.status}</span><div className="rowActions">{item.role === "worker" && item.status === "pending" && <><button className="workerApprove" disabled={changing !== null} onClick={() => reviewWorker(item,"approved")}><Check/> {changing === item.id ? "অপেক্ষা করুন…" : "অনুমোদন করুন"}</button><button className="danger" disabled={changing !== null} onClick={() => reviewWorker(item,"rejected")}><X/> বাতিল করুন</button></>}<button onClick={() => openProfile(item.id)}><UserRound /> Profile দেখুন</button></div></article>)}</div></section>
     {profile && <div className="modalBackdrop" onMouseDown={() => setProfile(null)}><section className="settingsModal adminProfileModal" onMouseDown={e => e.stopPropagation()}><button className="modalClose" onClick={() => setProfile(null)}><X /></button><small>COMPLETE USER CONTROL</small><h2>{profile.full_name}</h2><p>@{profile.username} • {profile.role} • {statusLabel[profile.status] || profile.status}</p><div className="profileFacts"><article><span>Referral code</span><b>{profile.referral_code || "—"}</b></article><article><span>Available balance</span><b>{money(profile.available)}</b></article><article><span>Total earned</span><b>{money(profile.earned)}</b></article><article><span>Reserved/withdraw</span><b>{money(profile.reserved)}</b></article></div><section className="textPerson"><h3>Profile ও Bank Details</h3><p><b>Phone:</b> {profile.phone || "—"}<br /><b>Email:</b> {profile.email || "—"}<br /><b>Address:</b> {profile.address || "—"}<br /><b>NID:</b> {profile.nid_number || "—"}<br /><b>Bank:</b> {profile.payout_account_name || "—"} • {profile.payout_account_number || "—"} • {profile.payout_branch || "—"}</p></section><div className="rowActions"><button className="primary" onClick={() => adjustBalance("add")}><Wallet /> Transaction যোগ করুন</button><button onClick={() => adjustBalance("deduct")}><Wallet /> Balance কমান</button><button onClick={changePassword}><LockKeyhole/> Password পরিবর্তন</button>{profile.status === "approved" ? <button className="danger" onClick={() => setUserStatus("suspended")}>Inactive করুন</button> : <button className="workerApprove" onClick={() => setUserStatus("approved")}>Active করুন</button>}</div><h3>Transaction History ({profile.transactions.length})</h3>{profile.transactions.map((item,index) => <p className="ledgerRow" key={item.id}><span>#{index + 1} • {item.reason || item.type}<small>{item.serial ? `${item.serial} • ${item.customer_name || "Customer"} • ` : ""}{item.type} • {new Date(item.created_at).toLocaleString("en-GB")}</small></span><b>{item.amount_paisa >= 0 ? "+" : ""}{money(item.amount_paisa)}</b></p>)}{!profile.transactions.length&&<p className="empty">কোনো transaction নেই</p>}<h3>এই User-এর Customer List ({profile.customers.length})</h3>{profile.customers.map(item => <p className="ledgerRow" key={item.id}><span>{item.serial} — {item.name}<small>{item.customer_number || "No customer ID"} • {item.phone || "No phone"} • {statusLabel[item.workflow_status] || item.workflow_status}</small></span><button className="recordEdit" onClick={() => onOpenCustomer?.(item.id)}><Pencil size={14}/> A–Z Edit</button></p>)}{!profile.customers.length&&<p className="empty">এখনো কোনো customer submit করেননি</p>}<h3>Referral List ({profile.children.length})</h3>{profile.children.map(item=><p className="ledgerRow" key={item.id}><span>{item.full_name}<small>@{item.username} • {item.referral_code} • {statusLabel[item.status] || item.status}</small></span></p>)}{!profile.children.length&&<p className="empty">কোনো referral নেই</p>}<h3>Withdrawal History ({profile.withdrawals.length})</h3>{profile.withdrawals.map(item=><p className="ledgerRow withdrawal" key={item.id}><span>#{item.id} • {item.status}<small>{item.account_name} • {item.account_number} • {item.reference || "No reference"}</small></span><b>-{money(item.amount_paisa)}</b></p>)}{!profile.withdrawals.length&&<p className="empty">কোনো withdrawal নেই</p>}</section></div>}
   </>;
@@ -2717,8 +2751,11 @@ function WorkerDashboard({ startNew, actions }) {
   const referralLink=profile?`${location.origin}${location.pathname}?ref=${encodeURIComponent(profile.referralCode)}`:"";
   const copyReferral=async()=>{await navigator.clipboard.writeText(referralLink);alert("Referral link copy হয়েছে");};
   if(!data)return <div className="loadingPage">Dashboard আসছে…</div>;
-  const workerMenu=[["dashboard",Home,"Dashboard",true],["customers",ListChecks,"Customers",true],["transactions",Wallet,"Transactions",true],["targets",Target,"Targets",false],["referrals",UsersRound,"Referrals",false],["profile",UserRound,"Profile",true]];
+  const workerMenu=[["dashboard",Home,"Dashboard",true],["customers",ListChecks,"Customers",true],["transactions",Wallet,"Transactions",true],...(data.management ? [["management",UsersRound,"My Team",false]] : []),["targets",Target,"Targets",false],["referrals",UsersRound,"Referrals",false],["citybank",Database,"City Bank",false],["profile",UserRound,"Profile",true]];
   return <AppShell className="workerPortal" menu={workerMenu} active={page} onNavigate={setPage} title={workerMenu.find(item=>item[0]===page)?.[2] || "Worker Portal"} actions={<>{actions}<button className="appIconButton noticeButton" aria-label="Notifications" onClick={()=>setPage("notifications")}><Bell/>{announcements.length>0&&<span>{announcements.length}</span>}</button></>}>
+
+    {page==="management"&&<><div className="pageHeading"><div><small>AREA MANAGER</small><h1>My Team</h1><p>আপনার নিচের user, income ও customer application status।</p></div></div><div className="metricGrid"><article><UsersRound/><span>Team users</span><b>{data.management.users.length}</b></article><article><Database/><span>Total files</span><b>{Object.values(data.management.counts||{}).reduce((a,b)=>a+b,0)}</b></article><article><Check/><span>Approved</span><b>{data.management.counts?.data_approved||0}</b></article><article><Wallet/><span>My commission</span><b>{money(data.referralIncome)}</b></article></div><section className="portalPanel"><h2>Team Income</h2>{data.management.users.map(u=><p className="ledgerRow" key={u.id}><span><b>{u.full_name}</b><small>{u.phone||'—'} • @{u.username}</small></span><b>{money(u.income)}</b></p>)}</section><section className="portalPanel"><h2>Customer Applications</h2>{data.management.customers.map(c=><p className="ledgerRow" key={c.serial}><span><b>{c.name}</b><small>{c.phone||'—'} • {c.address||'—'} • Collected by {c.collectorName} ({c.collectorPhone||'—'})</small></span><b>{statusLabel[c.status]||c.status}</b></p>)}</section></>}
+    {page==="citybank"&&<><div className="pageHeading"><div><small>CITY BANK</small><h1>City Bank সম্পর্কে জানুন</h1><p>Account opening, customer document এবং service বিষয়ে প্রয়োজনীয় নির্দেশনা।</p></div></div><section className="portalPanel"><h2>City Bank Agent Service</h2><p>গ্রাহকের অনুমতি নিয়ে সঠিক NID, nominee, ছবি ও আয়ের তথ্য সংগ্রহ করুন। জমা দেওয়ার পরে Admin যাচাই করবেন এবং account number complete হলে application status update হবে।</p><p className="secureNotice"><ShieldCheck/> কোনো customer-এর NID, ছবি বা bank information অনুমতি ছাড়া শেয়ার করবেন না।</p></section></>}
 
     {page==="dashboard"&&<><div className="portalHero workerHero"><div><small>TEMPORARY WORKER</small><h1>আজকের কাজ এক নজরে</h1><p>Customer collection, correction এবং আপনার আয় সহজে দেখুন।</p></div><button className="primary" onClick={startNew}><Plus/> নতুন Customer</button></div><div className="metricGrid"><article><Database/><span>মোট জমা</span><b>{Object.values(data.counts||{}).reduce((a,b)=>a+b,0)}</b></article><article><RefreshCw/><span>Recollection</span><b>{data.counts.correction_required||0}</b></article><article><Wallet/><span>মোট আয়</span><b>{money(data.earned)}</b></article><article><ShieldCheck/><span>Available balance</span><b>{money(data.available)}</b></article></div>{data.notifications?.map(n=><div className="notification" key={n.id}><b>{n.title}</b><span>{n.message}</span></div>)}{data.targets?.length>0&&<section className="targetStrip"><Target/>{data.targets.map(t=><div key={t.id}><b>{t.name}</b><span>{Math.min(t.progress,t.required_count)}/{t.required_count} • Bonus {money(t.bonus_paisa)}</span><progress value={Math.min(t.progress,t.required_count)} max={t.required_count}/></div>)}</section>}<section className="quickActions"><button onClick={startNew}><Plus/><b>নতুন Customer</b><span>তথ্য সংগ্রহ শুরু করুন</span></button><button onClick={()=>setPage("customers")}><ListChecks/><b>Customer List</b><span>জমা ও correction দেখুন</span></button><button onClick={()=>setPage("transactions")}><Wallet/><b>Transactions</b><span>আয় ও withdrawal দেখুন</span></button></section></>}
     {page==="customers"&&<><div className="pageHeading"><div><small>MY COLLECTIONS</small><h1>Customer List</h1><p>আপনার জমা দেওয়া customer এবং বর্তমান status।</p></div><button className="primary" onClick={startNew}><Plus/> নতুন Customer</button></div><section className="portalPanel">{rows.length?<div className="portalTable">{rows.map(r=><article className="clickableRow" key={r.id} onClick={()=>openCustomer(r.id)}><div><b>{r.serial}</b><small>{new Date(r.createdAt).toLocaleDateString("en-GB")}</small></div><div><b>{r.name}</b><small>Nominee: {r.nominee||"—"}</small></div><div><b>{r.phone||"—"}</b><small>নিরাপত্তার জন্য masked</small></div><span className={`statusTag ${r.status}`}>{statusLabel[r.status]||r.status}</span>{r.correctionNote&&<p className="correctionNote">Admin note: {r.correctionNote}</p>}</article>)}</div>:<p className="empty">এখনো কোনো Customer জমা দেওয়া হয়নি</p>}</section></>}
@@ -2787,8 +2824,9 @@ function AdminPortal({ openRecords, actions }) {
   async function saveSupport(){const r=await fetch('/api/admin/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({supportWhatsApp:adminSettings.support_whatsapp})}),x=await readJson(r);alert(r.ok?'WhatsApp support Save হয়েছে':x.error);if(r.ok)load();}
   if(!dashboard)return <div className="loadingPage">Admin panel আসছে…</div>;
   if(tab==='users')return <div className="adminPortal usersOnly"><button className="secondary" onClick={()=>setTab('overview')}><ChevronLeft/> Admin Overview</button><AdminUserControl users={users} reload={load} master={true} onOpenCustomer={openCase}/>{selectedCase&&<AdminCaseModal data={selectedCase} close={()=>setSelectedCase(null)} reload={load}/>}</div>;
-  const adminMenu=[["overview",Home,"Overview"],["users",UsersRound,"Users"],["cases",Database,"Applications"],["finance",Wallet,"Finance"],["targets",Target,"Targets"],["payments",Download,"Withdrawals"],["announcements",Bell,"Announcements"],["settings",Settings,"Settings"]];
+  const adminMenu=[["overview",Home,"Overview"],["users",UsersRound,"Users"],["cases",Database,"Applications"],["finance",Wallet,"Finance"],["targets",Target,"Targets"],["payments",Download,"Withdrawals"],["announcements",Bell,"Announcements"],["citybank",Database,"City Bank"],["settings",Settings,"Settings"]];
   return <AppShell className="adminPortal" menu={adminMenu} active={tab} onNavigate={setTab} title={adminMenu.find(item=>item[0]===tab)?.[2] || "Admin Portal"} footer={<button onClick={openRecords}><Database/> Customer Files</button>} actions={<>{actions}<button className="appIconButton noticeButton" aria-label="Notifications" onClick={()=>setTab("announcements")}><Bell/>{announcements.filter(a=>a.active).length>0&&<span>{announcements.filter(a=>a.active).length}</span>}</button></>}><div className="portalHero adminHero compactHero"><div><small>AMJHUPI CITY AGENT BANK</small><h1>{adminMenu.find(item=>item[0]===tab)?.[2]}</h1><p>সম্পূর্ণ control, review এবং management আপনার হাতে।</p></div></div>
+    {tab==='citybank'&&<section className="portalPanel"><h2>City Bank সম্পর্কে জানুন</h2><p>Agent service-এ customer consent, সঠিক document collection এবং Admin review গুরুত্বপূর্ণ। কোনো NID, ছবি বা bank details অননুমোদিতভাবে শেয়ার করা যাবে না।</p></section>}
     {tab==='overview'&&<><div className="metricGrid"><article><Clock3/><span>Worker approval অপেক্ষায়</span><b>{dashboard.users.pending||0}</b></article><article><Database/><span>নতুন Application</span><b>{dashboard.cases.submitted||0}</b></article><article><Check/><span>Account completed</span><b>{dashboard.cases.completed||0}</b></article><article><Wallet/><span>মোট Reward</span><b>{money(dashboard.totalRewards)}</b></article></div><section className="portalPanel"><h2>আজকের কাজ</h2><p className="empty">Pending worker approve করুন, submitted customer file যাচাই করুন, তারপর account complete হলে account number দিন।</p></section></>}
     {tab==='workers'&&<section className="portalPanel"><div className="panelTitle"><div><small>WORKER MANAGEMENT</small><h2>Registration ও Approval</h2></div></div><div className="portalTable">{users.map(u=><article key={u.id}><div><b>{u.full_name}</b><small>@{u.username}</small></div><div><b>{u.phone}</b><small>{u.email||'No email'}</small></div><div><b>{u.address||'—'}</b><small>Registration address</small></div><span className={`statusTag ${u.status}`}>{statusLabel[u.status]||u.status}</span><div className="rowActions"><button onClick={()=>openWorker(u.id)}>A–Z Preview</button>{u.status!=='approved'&&<button onClick={()=>userStatus(u.id,'approved')}>Approve</button>}{u.status!=='suspended'&&<button onClick={()=>userStatus(u.id,'suspended')}>Lock</button>}<button className="danger" onClick={()=>userStatus(u.id,'rejected')}>Reject</button></div></article>)}</div></section>}
     {tab==='cases'&&<section className="portalPanel"><div className="panelTitle"><div><small>APPLICATION REVIEW</small><h2>Customer submissions</h2></div></div><div className="portalTable applications">{cases.map(c=><article key={c.id}><div><b>{c.serial}</b><small>Customer ID: {c.customer_number||'—'}</small></div><div><b>{c.name}</b><small>{c.phone||'—'} • Submitted by: {c.worker_name||c.created_by}{c.worker_phone?` (${c.worker_phone})`:''}</small></div><span className={`statusTag ${c.workflow_status}`}>{statusLabel[c.workflow_status]||c.workflow_status}</span><div className="rowActions"><button onClick={()=>openCase(c.id)}>A–Z Preview & Edit</button><button onClick={()=>review(c.id,'approve')}>Approve +৳50</button><button onClick={()=>review(c.id,'processing')}>Bank Processing</button><button onClick={()=>review(c.id,'complete')}>Complete +৳50</button><button onClick={()=>bonus(c.id)}>Bonus</button></div></article>)}</div></section>}
@@ -2962,7 +3000,7 @@ function App() {
       }));
     };
   async function openPreview() {
-    if (auth?.role === "worker") { setStep(3); return; }
+    if (isCollectionRole(auth?.role)) { setStep(3); return; }
     try {
       const previews = await Promise.all(
         people.map(async (p) => [
@@ -3092,7 +3130,7 @@ function App() {
   };
   return (
     <CollectionOnly.Provider value={false}>
-      <WorkerRoleContext.Provider value={auth?.role === "worker"}>
+      <WorkerRoleContext.Provider value={isCollectionRole(auth?.role)}>
         <PageFrame {...frameProps}>
       {confirmClear && <div className="modalBackdrop"><section className="settingsModal" role="dialog" aria-modal="true" aria-label="Clear draft confirmation"><h2>চলমান Draft Clear করবেন?</h2><p>সব scan, ছবি ও অসম্পূর্ণ details মুছে যাবে। Server-এ জমা দেওয়া ফাইল থাকবে।</p><button className="primary" onClick={clearCurrentDraft}>Clear all draft data</button><button className="secondary" onClick={()=>setConfirmClear(false)}>Cancel</button></section></div>}
       {isAdminRole(auth.role) && <ApiSettings open={showSettings} onClose={() => setShowSettings(false)} />}
@@ -3187,7 +3225,7 @@ function App() {
                     }
                   />
                 ))}
-                {auth.role === "worker" && <label className="consentBox"><input type="checkbox" checked={customerConsent} onChange={e=>setCustomerConsent(e.target.checked)} /><span><b>গ্রাহকের সম্মতি নেওয়া হয়েছে</b><small>City Bank account opening-এর জন্য তথ্য ও document সংগ্রহে গ্রাহক সম্মতি দিয়েছেন।</small></span></label>}
+                {isCollectionRole(auth.role) && <label className="consentBox"><input type="checkbox" checked={customerConsent} onChange={e=>setCustomerConsent(e.target.checked)} /><span><b>গ্রাহকের সম্মতি নেওয়া হয়েছে</b><small>City Bank account opening-এর জন্য তথ্য ও document সংগ্রহে গ্রাহক সম্মতি দিয়েছেন।</small></span></label>}
                 <button
                   className="add"
                   onClick={() =>
@@ -3296,7 +3334,7 @@ function App() {
                   <b>Additional Document যোগ করুন</b>
                   <small>নাম লিখুন • Auto crop • PDF save</small>
                 </button>
-                {auth.role === "worker" ? <section className="portalPanel"><h3>পেশা ও কাজের বিবরণ</h3><label><span>পেশা</span><input required value={people[0]?.profession||""} onChange={e=>change({...people[0],profession:e.target.value})}/></label><label><span>গ্রাহক কী কাজ করেন?</span><textarea required value={declaration.rawDescription||""} onChange={e=>setDeclaration({...declaration,rawDescription:e.target.value})} placeholder="কাজ বা ব্যবসার ধরন এবং কীভাবে আয় করেন লিখুন"/></label></section> : <DeclarationForm
+                {isCollectionRole(auth.role) ? <section className="portalPanel"><h3>পেশা ও কাজের বিবরণ</h3><label><span>পেশা</span><input required value={people[0]?.profession||""} onChange={e=>change({...people[0],profession:e.target.value})}/></label><label><span>গ্রাহক কী কাজ করেন?</span><textarea required value={declaration.rawDescription||""} onChange={e=>setDeclaration({...declaration,rawDescription:e.target.value})} placeholder="কাজ বা ব্যবসার ধরন এবং কীভাবে আয় করেন লিখুন"/></label></section> : <DeclarationForm
                   value={declaration}
                   change={setDeclaration}
                   applicant={people[0]}
@@ -3360,7 +3398,7 @@ function App() {
               </aside>
             </div>
           </>
-        ) : step === 3 && auth.role === "worker" ? (
+        ) : step === 3 && isCollectionRole(auth.role) ? (
           <WorkerFinalPreview name={name} details={details} people={people} declaration={declaration} onBack={()=>setStep(2)} onSave={save} saving={saving}/>
         ) : step === 3 ? (
           <div className="preview">
@@ -3688,7 +3726,7 @@ function App() {
                 setSavedCustomerId(null);
                 setCustomerConsent(false);
                 localStorage.removeItem("documentStudioDraft");
-                setStep(auth.role === "worker" ? 0 : 1);
+                setStep(isCollectionRole(auth.role) ? 0 : 1);
               }}
             >
               নতুন কেস শুরু করুন
