@@ -226,11 +226,11 @@ async function signatureScan(imageData, action = "process") {
   if (!response.ok) throw new Error(result.error || "Signature scan হয়নি");
   return result;
 }
-async function makePassportPhoto(imageData) {
+async function makePassportPhoto(imageData, extraPrompt = "") {
   const response = await fetch("/api/passport-photo", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ image: imageData }),
+    body: JSON.stringify({ image: imageData, extraPrompt }),
   });
   const result = await readJson(response);
   if (!response.ok) throw new Error(result.error || "Passport photo তৈরি হয়নি");
@@ -2795,19 +2795,50 @@ function AdminReviewMedia({ person, label }) {
   </div></details>;
 }
 
+function AdminAiPhotoControls({ source, filename, onSave }) {
+  const [preview, setPreview] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const create = async (extraPrompt = "") => {
+    setBusy(true);
+    try { setPreview((await makePassportPhoto(source, extraPrompt)).image); }
+    catch (error) { alert(error.message); }
+    finally { setBusy(false); }
+  };
+  const remake = () => {
+    const note = prompt("নতুন ছবির জন্য extra instruction লিখুন (optional)");
+    if (note !== null) create(note);
+  };
+  const save = async () => {
+    if (!preview) return;
+    setSaving(true);
+    try { await onSave(preview); setPreview(""); alert("AI photo save হয়েছে। Chrome extension-এও নতুন ছবি দেখা যাবে। "); }
+    catch (error) { alert(error.message); }
+    finally { setSaving(false); }
+  };
+  return <section className="adminAiPhotoControls">
+    <button type="button" className="secondary" disabled={busy || !source} onClick={() => create()}>{busy ? "AI photo তৈরি হচ্ছে…" : "AI দিয়ে ছবি তৈরি করুন"}</button>
+    {preview && <div className="adminAiPhotoResult"><h4>AI Photo Preview</h4><PreviewImage src={preview} label="AI Passport Photo" portrait />
+      <div className="pdfActions"><a href={preview} download={`${filename}_AI.jpg`} className="secondary"><Download size={17}/> AI Photo Download</a><button type="button" className="secondary" disabled={busy || saving} onClick={remake}>Prompt দিয়ে আবার তৈরি করুন</button><button type="button" className="primary" disabled={saving} onClick={save}>{saving ? "Save হচ্ছে…" : "এই ছবি Save করুন"}</button><button type="button" className="secondary" disabled={busy || saving} onClick={() => setPreview("")}>বাদ দিন</button></div>
+    </div>}
+  </section>;
+}
+
 function AdminCaseModal({ data, close, reload }) {
   const [caseData,setCaseData]=useState(data.customer.case),[fields,setFields]=useState([]),[saving,setSaving]=useState(false), c=data.customer;
-  const [aiBusy,setAiBusy]=useState(false);
-  async function processPhoto(index) {
-    setAiBusy(true);
-    try { const result=await makePassportPhoto(caseData.people[index].photo); updatePerson(index,"photo",result.image); }
-    catch(error){alert(error.message);} finally{setAiBusy(false);}
+  async function saveAiPhoto(index, image) {
+    const updated = {...caseData, people:caseData.people.map((person, position) => position === index ? {...person, photo:image} : person)};
+    const response = await fetch('/api/admin/customers/'+c.id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({case:updated})});
+    const result = await readJson(response);
+    if (!response.ok) throw new Error(result.error || 'AI photo save হয়নি');
+    setCaseData(updated);
+    await reload();
   }
   const options=[["people.0.idFront","Applicant NID Front"],["people.0.idBack","Applicant NID Back"],["people.0.photo","Applicant Photo"],["people.0.nid","Applicant NID Number"],["people.0.addressBn","Applicant Address"],["people.1.idFront","Nominee NID Front"],["people.1.idBack","Nominee NID Back"],["people.1.photo","Nominee Photo"],["people.1.birthCertificate","Nominee Birth Certificate"],["people.1.nid","Nominee ID Number"],["declaration.rawDescription","Income details"],["declaration.monthlyIncome","Monthly income"]];
   const updatePerson=(i,key,value)=>setCaseData({...caseData,people:caseData.people.map((p,n)=>n===i?{...p,[key]:value}:p)});
   async function saveEdit(){setSaving(true);try{const r=await fetch('/api/admin/customers/'+c.id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({case:caseData})}),x=await readJson(r);if(!r.ok)throw new Error(x.error);alert('Details save হয়েছে');reload();}catch(e){alert(e.message)}finally{setSaving(false)}}
   async function recollect(){const note=prompt('Worker-কে কী আবার সংগ্রহ করতে হবে লিখুন');if(!note||!fields.length)return alert('Field নির্বাচন ও নির্দেশনা দিন');const r=await fetch('/api/admin/customers/'+c.id+'/review',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'correction',note,fields})}),x=await readJson(r);if(!r.ok)return alert(x.error);alert('Worker-এর কাছে Recollection পাঠানো হয়েছে');close();reload();}
-  return <div className="modalBackdrop adminPreviewBackdrop" onMouseDown={close}><section className="adminCaseModal" onMouseDown={e=>e.stopPropagation()}><button className="modalClose" onClick={close}><X/></button><div className="adminCaseHead"><div><small>FULL APPLICATION REVIEW</small><h1>{c.serial} — {caseData.name}</h1><p><b>TW:</b> {c.worker_name||c.created_by} • {c.worker_phone||'—'} • {c.created_by}</p></div><span className={'statusTag '+c.workflow_status}>{statusLabel[c.workflow_status]||c.workflow_status}</span></div><div className="adminReviewGrid"><div>{(caseData.people||[]).map((p,i)=><section className="reviewPerson" key={p.id||i}><h2>{i?'Nominee':'Applicant'}</h2><div className="reviewFields">{[["name","Name"],["nameBn","নাম"],["relationship","Applicant-এর সাথে সম্পর্ক"],["nid","NID / ID"],["dob","DOB"],["fatherNameEn","Father"],["motherNameEn","Mother"],["addressEn","Address English"],["addressBn","ঠিকানা"],["profession","Profession"]].map(([key,label])=><label key={key}><span>{label}</span><input value={p[key]||''} onChange={e=>updatePerson(i,key,e.target.value)}/></label>)}</div><button className="secondary" disabled={aiBusy||!p.photo} onClick={()=>processPhoto(i)}>{aiBusy?"প্রসেস হচ্ছে…":"AI দিয়ে ছবি তৈরি করুন"}</button><AdminReviewMedia person={p} label={i?'Nominee ID Card':'Applicant ID Card'} /></section>)}<DeclarationForm value={caseData.declaration||{}} change={declaration=>setCaseData({...caseData,declaration})} applicant={caseData.people?.[0]} signature={caseData.docs?.find(d=>d.kind==='signature')?.pages?.[0]}/><section className="reviewPerson"><h2>Signature ও Additional Documents</h2><details className="reviewMedia"><summary>Signature ও document files দেখুন</summary><div className="adminImageGrid">{(caseData.docs||[]).flatMap(d=>(d.pages||[]).map((src,i)=><PreviewImage key={(d.id||d.name)+i} src={src} label={(d.name||d.kind)+' '+(i+1)}/>))}</div></details></section></div><aside className="recollectionSelector"><h3>Recollection নির্বাচন</h3><p>শুধু নির্বাচিত item Worker আবার খুলতে পারবে।</p>{options.map(([value,label])=><label key={value}><input type="checkbox" checked={fields.includes(value)} onChange={e=>setFields(e.target.checked?[...fields,value]:fields.filter(v=>v!==value))}/><span>{label}</span></label>)}<button className="secondary full" onClick={recollect}><RefreshCw/> Recollection পাঠান</button><button className="primary full" disabled={saving} onClick={saveEdit}><Check/> Admin Edit Save</button><a className="recordDownload" href={'/api/customers/'+c.id+'/download'}><Download/> Full ZIP Download</a></aside></div></section></div>;
+  return <div className="modalBackdrop adminPreviewBackdrop" onMouseDown={close}><section className="adminCaseModal" onMouseDown={e=>e.stopPropagation()}><button className="modalClose" onClick={close}><X/></button><div className="adminCaseHead"><div><small>FULL APPLICATION REVIEW</small><h1>{c.serial} — {caseData.name}</h1><p><b>TW:</b> {c.worker_name||c.created_by} • {c.worker_phone||'—'} • {c.created_by}</p></div><span className={'statusTag '+c.workflow_status}>{statusLabel[c.workflow_status]||c.workflow_status}</span></div><div className="adminReviewGrid"><div>{(caseData.people||[]).map((p,i)=><section className="reviewPerson" key={p.id||i}><h2>{i?'Nominee':'Applicant'}</h2><div className="reviewFields">{[["name","Name"],["nameBn","নাম"],["relationship","Applicant-এর সাথে সম্পর্ক"],["nid","NID / ID"],["dob","DOB"],["fatherNameEn","Father"],["motherNameEn","Mother"],["addressEn","Address English"],["addressBn","ঠিকানা"],["profession","Profession"]].map(([key,label])=><label key={key}><span>{label}</span><input value={p[key]||''} onChange={e=>updatePerson(i,key,e.target.value)}/></label>)}</div><AdminAiPhotoControls source={p.photo} filename={personBase(p)} onSave={image=>saveAiPhoto(i,image)} /><AdminReviewMedia person={p} label={i?'Nominee ID Card':'Applicant ID Card'} /></section>)}<DeclarationForm value={caseData.declaration||{}} change={declaration=>setCaseData({...caseData,declaration})} applicant={caseData.people?.[0]} signature={caseData.docs?.find(d=>d.kind==='signature')?.pages?.[0]}/><section className="reviewPerson"><h2>Signature ও Additional Documents</h2><details className="reviewMedia"><summary>Signature ও document files দেখুন</summary><div className="adminImageGrid">{(caseData.docs||[]).flatMap(d=>(d.pages||[]).map((src,i)=><PreviewImage key={(d.id||d.name)+i} src={src} label={(d.name||d.kind)+' '+(i+1)}/>))}</div></details></section></div><aside className="recollectionSelector"><h3>Recollection নির্বাচন</h3><p>শুধু নির্বাচিত item Worker আবার খুলতে পারবে।</p>{options.map(([value,label])=><label key={value}><input type="checkbox" checked={fields.includes(value)} onChange={e=>setFields(e.target.checked?[...fields,value]:fields.filter(v=>v!==value))}/><span>{label}</span></label>)}<button className="secondary full" onClick={recollect}><RefreshCw/> Recollection পাঠান</button><button className="primary full" disabled={saving} onClick={saveEdit}><Check/> Admin Edit Save</button><a className="recordDownload" href={'/api/customers/'+c.id+'/download'}><Download/> Full ZIP Download</a></aside></div></section></div>;
 }
 
 function AdminPortal({ openRecords, actions }) {
