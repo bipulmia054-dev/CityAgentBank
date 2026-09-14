@@ -8,7 +8,7 @@
 4. Toolbar icon pin করে খুলুন; side panel খোলা থাকবে।
 5. Admin/master admin/subadmin account দিয়ে login করুন। Password extension-এ save হয় না।
 
-NID/phone/name/email/serial দিয়ে search করুন। Applicant-এর issue date/place, ID number, name, DOB, front/back download, email/phone, profession, parents ও বিস্তারিত address দেখাবে। এরপর Nominee details ও photo/front/back download থাকবে। Missing তথ্য অনুমান করা হয় না।
+NID/phone/name/email/serial দিয়ে search করুন। Applicant-এর issue date/place, ID number, name, DOB, front/back download, email/phone, profession, parents ও বিস্তারিত address দেখাবে। Applicant NID Front ও Back-এর পাশে নির্ধারিত Agent User ID seal নিচ থেকে ওপরের দিকে vertical ভাবে থাকবে। এরপর Nominee details ও photo/front/back download থাকবে। Missing তথ্য অনুমান করা হয় না।
 
 Income Declaration details edit করে AI দিয়ে Recreate চাপুন। Server-এর Gemini key দিয়ে description সাজবে; preview review করে Details থেকে PDF Save & Download চাপুন। AI ছাড়াও edited details থেকে PDF তৈরি হয়। Saved PDF Download আগের saved PDF দেয়।
 
