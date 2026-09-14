@@ -89,18 +89,30 @@ async function compressedJpeg(source, maximumBytes = 200 * 1024) {
   throw new Error('ছবিটি 200 KB-এর নিচে compress করা যায়নি');
 }
 async function downloadImage(source, name) { downloadBlob(await compressedJpeg(source),`${name}.jpg`); }
+async function downloadStampedIdentity(source, name) {
+  const [card, seal] = await Promise.all([
+    new Promise((resolve, reject) => { const image = new Image(); image.onload=()=>resolve(image); image.onerror=reject; image.src=source; }),
+    new Promise((resolve, reject) => { const image = new Image(); image.onload=()=>resolve(image); image.onerror=reject; image.src=chrome.runtime.getURL('agent-user-id-seal.jpg'); }),
+  ]);
+  const cardWidth=card.naturalWidth||card.width, cardHeight=card.naturalHeight||card.height;
+  const sealWidth=Math.max(1,Math.round(cardHeight*(seal.naturalHeight||seal.height)/(seal.naturalWidth||seal.width)));
+  const canvas=document.createElement('canvas');canvas.width=cardWidth+sealWidth;canvas.height=cardHeight;
+  const context=canvas.getContext('2d');context.fillStyle='#fff';context.fillRect(0,0,canvas.width,canvas.height);context.drawImage(card,0,0,cardWidth,cardHeight);
+  context.save();context.translate(cardWidth+sealWidth/2,cardHeight/2);context.rotate(-Math.PI/2);context.drawImage(seal,-cardHeight/2,-sealWidth/2,cardHeight,sealWidth);context.restore();
+  downloadBlob(await compressedJpeg(canvas.toDataURL('image/png')),`${name}.jpg`);
+}
 function applicantFilename(part) {
   const applicant = casePeople(selectedCase || {}).applicant || {};
   const name = String(applicant.name || applicant.nameBn || selected?.name || 'APPLICANT').toUpperCase().replace(/[^A-Z0-9]+/g,'_').replace(/^_|_$/g,'') || 'APPLICANT';
   return `${name}_${part}`;
 }
-function photo(container, source, label, filenamePart = '') {
+function photo(container, source, label, filenamePart = '', downloadAction = null) {
   const src = safeImage(source); if (!src) return;
   const figure=document.createElement('figure');
   const image = document.createElement('img'); image.src=src; image.alt=label; image.className='photo'; image.loading='lazy';
   const download=document.createElement('button');download.textContent=label+' Download (≤200 KB)';
   const filePart=String(filenamePart || label).toUpperCase().replace(/[^A-Z0-9]+/g,'_').replace(/^_|_$/g,'');
-  download.addEventListener('click',async()=>{download.disabled=true;try{await downloadImage(src,applicantFilename(filePart));}catch(error){showError(error);}finally{download.disabled=false;}});
+  download.addEventListener('click',async()=>{download.disabled=true;try{await (downloadAction||downloadImage)(src,applicantFilename(filePart));}catch(error){showError(error);}finally{download.disabled=false;}});
   const personIndex=selectedCase?.people?.findIndex(person=>person.photo===source) ?? -1;
   if(personIndex>=0 && label.includes('Photo')) {
     const process=document.createElement('button');process.textContent='AI দিয়ে ছবি তৈরি করুন';
@@ -134,7 +146,7 @@ function photo(container, source, label, filenamePart = '') {
 function stampedIdPhoto(container, source, label, filenamePart) {
   if (!safeImage(source)) return;
   const wrap=document.createElement('div');wrap.className='identityStamped';
-  photo(wrap,source,label,filenamePart);
+  photo(wrap,source,label,filenamePart,downloadStampedIdentity);
   const sealSlot=document.createElement('div');sealSlot.className='agentSealSlot';
   const seal=document.createElement('img');seal.className='agentSeal';seal.alt='Agent User ID seal';seal.src=chrome.runtime.getURL('agent-user-id-seal.jpg');
   sealSlot.append(seal);wrap.append(sealSlot);container.append(wrap);
