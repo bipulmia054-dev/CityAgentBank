@@ -155,13 +155,8 @@ function personCard(label, person, fallback = {}, nominee = false) {
   const card=document.createElement('section');card.className='person';const title=document.createElement('h3');title.textContent=label;card.append(title);
   photo(card,person.photo,`${label} Photo`,nominee?'NOMINEE_PHOTO':'PHOTO');
   const ids=document.createElement('div');ids.className='identityPair';
-  if (nominee) {
-    photo(ids,person.idFront,`${label} ID Front`,'NOMINEE_NID_FRONT');
-    photo(ids,person.idBack,`${label} ID Back`,'NOMINEE_NID_BACK');
-  } else {
-    stampedIdPhoto(ids,person.idFront,`${label} ID Front`,'NID_FRONT');
-    stampedIdPhoto(ids,person.idBack,`${label} ID Back`,'NID_BACK');
-  }
+  stampedIdPhoto(ids,person.idFront,`${label} ID Front`,nominee?'NOMINEE_NID_FRONT':'NID_FRONT');
+  stampedIdPhoto(ids,person.idBack,`${label} ID Back`,nominee?'NOMINEE_NID_BACK':'NID_BACK');
   card.append(ids);
   if(nominee) {
     fields(card,[["Nominee name",String(person.name||person.nameBn||"").toUpperCase()],["Nominee NID number",person.nid||""],["Date of birth",person.dob||""],["Relationship with applicant",String(person.relation||person.relationship||person.relationToApplicant||"").toUpperCase()],["Full address",englishLocation(person.addressEn||person.addressBn||"")]]);
