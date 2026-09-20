@@ -37,12 +37,45 @@ class CustomerAssetsTest(unittest.TestCase):
     def tearDownClass(cls):
         cls.http.shutdown(); cls.http.server_close(); cls.temp.cleanup()
 
-    def request(self,path,body=None,user='admin'):
-        req=urllib.request.Request(self.url+path,data=json.dumps(body).encode() if body is not None else None,headers={'Cookie':'ds_session='+user,'Content-Type':'application/json'})
+    def request(self,path,body=None,user='admin',method=None):
+        req=urllib.request.Request(self.url+path,data=json.dumps(body).encode() if body is not None else None,method=method,headers={'Cookie':'ds_session='+user,'Content-Type':'application/json'})
         try:
             with urllib.request.urlopen(req) as response:return response.status,response.read()
         except urllib.error.HTTPError as error:
             with error:return error.code,error.read()
+
+    def test_manager_admin_access(self):
+        with server.db() as con:
+            con.execute("INSERT INTO users(username,password_hash,salt,created_at,role,status,commission_enabled,commission_percent) VALUES('manager_access','unused','unused','2026-01-01','area_manager','approved',1,10)")
+            manager_id = con.execute("SELECT id FROM users WHERE username='manager_access'").fetchone()['id']
+            con.execute("INSERT INTO sessions(token,username,expires_at) VALUES('manager_access','manager_access','2099-01-01')")
+        endpoint = '/api/admin/users/' + str(manager_id)
+        self.assertEqual(self.request('/api/admin/dashboard',user='manager_access')[0],403)
+        self.assertEqual(self.request(endpoint,{'adminAccess':True},user='manager_access',method='PUT')[0],403)
+        self.assertEqual(self.request(endpoint,{'adminAccess':'true'},method='PUT')[0],400)
+        self.assertEqual(self.request(endpoint,{'adminAccess':True},method='PUT')[0],200)
+        status,body = self.request('/api/auth/status',user='manager_access')
+        self.assertEqual(status,200)
+        self.assertTrue(json.loads(body)['canAdmin'])
+        for path in ['/api/admin/dashboard','/api/admin/users','/api/admin/finance','/api/worker/dashboard']:
+            self.assertEqual(self.request(path,user='manager_access')[0],200,path)
+        users = json.loads(self.request('/api/admin/users')[1])['users']
+        self.assertEqual(next(u for u in users if u['id']==manager_id)['admin_access'],1)
+        self.assertEqual(self.request(endpoint,{'adminAccess':False},user='manager_access',method='PUT')[0],403)
+        self.assertEqual(self.request(endpoint,{'role':'worker'},user='manager_access',method='PUT')[0],403)
+        self.assertEqual(self.request(endpoint,{'newPassword':'replace-password'},user='manager_access',method='PUT')[0],403)
+        with server.db() as con:
+            row = con.execute('SELECT role,commission_enabled,commission_percent FROM users WHERE id=?',(manager_id,)).fetchone()
+            self.assertEqual(tuple(row),('area_manager',1,10))
+        self.assertEqual(self.request(endpoint,{'adminAccess':False},method='PUT')[0],200)
+        self.assertEqual(self.request('/api/admin/dashboard',user='manager_access')[0],403)
+        self.assertFalse(json.loads(self.request('/api/auth/status',user='manager_access')[1])['canAdmin'])
+        self.assertEqual(self.request(endpoint,{'adminAccess':True},method='PUT')[0],200)
+        self.assertEqual(self.request(endpoint,{'role':'worker'},method='PUT')[0],200)
+        self.assertEqual(self.request('/api/admin/dashboard',user='manager_access')[0],403)
+        with server.db() as con:
+            self.assertEqual(con.execute('SELECT admin_access FROM users WHERE id=?',(manager_id,)).fetchone()[0],0)
+        self.assertEqual(self.request(endpoint,{'adminAccess':True},method='PUT')[0],400)
 
     def test_registration_without_identity_uploads(self):
         with server.db() as con:

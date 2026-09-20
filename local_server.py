@@ -114,7 +114,7 @@ class Handler(SimpleHTTPRequestHandler):
 
     def is_admin(self):
         row = self.current_user()
-        return bool(row and worker_system.is_admin_role(row["role"]) and row["status"] == "approved")
+        return worker_system.can_admin(row)
 
     def authorized(self):
         current = self.current_user()
@@ -148,8 +148,9 @@ class Handler(SimpleHTTPRequestHandler):
                     OR c.customer_number LIKE ? OR c.phone LIKE ? OR c.email LIKE ? COLLATE NOCASE
                     OR json_extract(CASE WHEN json_valid(c.case_json) THEN c.case_json ELSE '{}' END,
                                     '$.people[0].nid') LIKE ?)
-                    ORDER BY c.id DESC LIMIT 100""",
-                    ("admin" if self.is_admin() else "worker", current["username"], query, pattern, pattern, pattern, pattern, pattern, pattern, pattern)).fetchall()
+                    ORDER BY c.id DESC LIMIT ?""",
+                    ("admin" if self.is_admin() else "worker", current["username"], query, pattern, pattern, pattern, pattern, pattern, pattern, pattern,
+                     -1 if self.is_admin() and parse_qs(route.query).get("all") == ["1"] else 100)).fetchall()
             if not self.is_admin():
                 return self.reply(200, {"customers": [{"id": r["id"], "serial": r["serial"], "name": r["name"],
                     "name_bn": r["name_bn"], "customer_number": "••••" + r["customer_number"][-4:] if r["customer_number"] else "",

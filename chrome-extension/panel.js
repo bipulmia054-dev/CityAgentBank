@@ -21,7 +21,7 @@ async function connect() {
   try {
     const auth = await api('/api/auth/status');
     if (!auth.authenticated) { unauthenticated(); notice(auth.setupRequired ? 'আগে মূল software-এ username/password তৈরি করুন।' : 'আগের username/password দিয়ে Login করুন।'); return; }
-    if (!['admin','master_admin','subadmin'].includes(auth.role)) { unauthenticated(); notice('পূর্ণ customer file দেখতে Admin account দিয়ে Login করুন।', true); return; }
+    if (!auth.canAdmin && !['admin','master_admin','subadmin'].includes(auth.role)) { unauthenticated(); notice('পূর্ণ customer file দেখতে Admin account দিয়ে Login করুন।', true); return; }
     $('login').hidden = true; $('workspace').hidden = false; $('user').textContent = auth.username; notice();
     await search();
   } catch (error) { unauthenticated(); showError(error); }

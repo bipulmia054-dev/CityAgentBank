@@ -2833,3 +2833,11 @@ body { background:linear-gradient(135deg,#fff,#f8f8f9 55%,#fff4f4); color:var(--
 .adminAiPhotoControls{margin-top:12px}.adminAiPhotoResult{margin-top:12px;padding:12px;border:1px solid #dce4df;border-radius:12px;background:#f8fbf9}.adminAiPhotoResult h4{margin:0 0 8px}.adminAiPhotoResult .fullImagePreview{max-width:320px;margin:0 0 10px}
 
 @media(max-width:760px){.adminIdentityGrid{grid-template-columns:1fr}}
+.sectionTabs { display:flex; flex-wrap:wrap; gap:10px; margin:18px 0; }
+.sectionTabs button { display:flex; align-items:center; justify-content:center; gap:8px; padding:12px 18px; border:1px solid #d6dfdc; border-radius:12px; background:#fff; color:#23463b; cursor:pointer; font-weight:600; }
+.sectionTabs button.active { background:#176449; color:#fff; border-color:#176449; }
+.sectionTabs button span { padding:2px 7px; border-radius:12px; background:rgba(128,128,128,.15); }
+.sectionTabs button:focus-visible { outline:3px solid #e4aa36; outline-offset:3px; }
+.viewSwitch { white-space:nowrap; }
+@media (max-width:600px) { .sectionTabs button { flex:1 1 calc(50% - 10px); padding:10px; } .viewSwitch { padding:8px; font-size:12px; } }
+.usersOnly .adminUserGrid { grid-template-columns:minmax(0,1fr); }

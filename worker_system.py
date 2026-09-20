@@ -43,7 +43,7 @@ def initialize(con, data_dir):
         "approved_by TEXT DEFAULT ''", "approved_at TEXT DEFAULT ''", "rejection_reason TEXT DEFAULT ''",
         "referral_code TEXT DEFAULT ''", "referred_by INTEGER", "profile_json TEXT DEFAULT ''",
         "nid_number TEXT DEFAULT ''", "commission_enabled INTEGER NOT NULL DEFAULT 0",
-        "commission_percent REAL NOT NULL DEFAULT 10"
+        "commission_percent REAL NOT NULL DEFAULT 10", "admin_access INTEGER NOT NULL DEFAULT 0"
     ):
         add_column(con, "users", definition)
     for definition in (
@@ -127,7 +127,11 @@ def save_data_image(value, folder, name):
 
 def public_user(row):
     return {"id": row["id"], "username": row["username"], "role": row["role"],
-            "status": row["status"], "fullName": row["full_name"], "phone": row["phone"]}
+            "status": row["status"], "fullName": row["full_name"], "phone": row["phone"], "canAdmin": can_admin(row)}
+
+
+def can_admin(user):
+    return bool(user and user["status"] == "approved" and (is_admin_role(user["role"]) or (user["role"] == "area_manager" and user["admin_access"])))
 
 
 def is_admin_role(role):
@@ -429,7 +433,7 @@ def dispatch(handler, method, path, db, data_dir, digest):
             return handler.reply(201, {"ok": True})
         except Exception as error: return handler.reply(400, {"error": str(error)})
 
-    if not is_admin_role(user["role"]):
+    if not can_admin(user):
         return handler.reply(403, {"error": "শুধু Admin এই কাজ করতে পারবেন"})
 
     if path == "/api/admin/dashboard" and method == "GET":
@@ -484,7 +488,7 @@ def dispatch(handler, method, path, db, data_dir, digest):
 
     if path == "/api/admin/users" and method == "GET":
         with db() as con:
-            rows = con.execute("SELECT id,username,full_name,phone,email,address,status,role,nid_last4,payout_account_name,payout_account_number,payout_branch,created_at,rejection_reason,referral_code,referred_by,commission_enabled,commission_percent FROM users WHERE role IN ('worker','area_manager','subadmin') ORDER BY id DESC").fetchall()
+            rows = con.execute("SELECT id,username,full_name,phone,email,address,status,role,nid_last4,payout_account_name,payout_account_number,payout_branch,created_at,rejection_reason,referral_code,referred_by,commission_enabled,commission_percent,admin_access FROM users WHERE role IN ('worker','area_manager','subadmin') ORDER BY id DESC").fetchall()
         return handler.reply(200, {"users": [dict(r) for r in rows]})
 
     if path == "/api/admin/users" and method == "POST":
@@ -511,7 +515,7 @@ def dispatch(handler, method, path, db, data_dir, digest):
     match = re.fullmatch(r"/api/admin/users/(\d+)/profile", path)
     if match and method == "GET":
         with db() as con:
-            profile = con.execute("SELECT id,username,full_name,phone,email,address,status,role,nid_number,nid_last4,referral_code,referred_by,created_at,payout_account_name,payout_account_number,payout_branch,commission_enabled,commission_percent FROM users WHERE id=? AND role IN ('worker','area_manager','subadmin')", (int(match.group(1)),)).fetchone()
+            profile = con.execute("SELECT id,username,full_name,phone,email,address,status,role,nid_number,nid_last4,referral_code,referred_by,created_at,payout_account_name,payout_account_number,payout_branch,commission_enabled,commission_percent,admin_access FROM users WHERE id=? AND role IN ('worker','area_manager','subadmin')", (int(match.group(1)),)).fetchone()
             if not profile: return handler.reply(404, {"error": "User পাওয়া যায়নি"})
             earned, reserved, available = balance(con, profile["id"])
             transactions = [dict(r) for r in con.execute("""SELECT t.id,t.type,t.amount_paisa,t.reason,t.reference,t.created_at,c.serial,c.name customer_name
@@ -627,9 +631,19 @@ def dispatch(handler, method, path, db, data_dir, digest):
                 current = con.execute("SELECT * FROM users WHERE id=? AND role IN ('worker','area_manager','subadmin')", (int(match.group(1)),)).fetchone()
                 if not current: raise ValueError("Worker পাওয়া যায়নি")
                 if current["role"] == "subadmin" and user["role"] != "master_admin": raise ValueError("শুধু Master Admin Subadmin পরিবর্তন করতে পারবেন")
+                if current["admin_access"] and user["role"] != "master_admin":
+                    return handler.reply(403, {"error": "Admin Access থাকা Manager-এর account শুধু Master Admin পরিবর্তন করতে পারবেন"})
                 if requested_role and requested_role not in ("worker","area_manager"): raise ValueError("Role সঠিক নয়")
                 if requested_role and current["role"] == "subadmin": raise ValueError("Subadmin role পরিবর্তন করা যাবে না")
                 next_role = requested_role or current["role"]
+                if "adminAccess" in data:
+                    if user["role"] != "master_admin":
+                        return handler.reply(403, {"error": "শুধু Master Admin admin access দিতে বা বন্ধ করতে পারবেন"})
+                    if next_role != "area_manager":
+                        raise ValueError("শুধু Area Manager-কে admin access দেওয়া যাবে")
+                    if not isinstance(data["adminAccess"], bool):
+                        raise ValueError("Admin access সঠিক নয়")
+                admin_access = int(data.get("adminAccess", bool(current["admin_access"]))) if next_role == "area_manager" else 0
                 commission_enabled = 1 if data.get("commissionEnabled") else 0 if "commissionEnabled" in data else current["commission_enabled"]
                 commission_percent = float(data.get("commissionPercent", current["commission_percent"]))
                 if not 0 <= commission_percent <= 100: raise ValueError("Commission percentage সঠিক নয়")
@@ -647,6 +661,7 @@ def dispatch(handler, method, path, db, data_dir, digest):
                      blind_index(data_dir, values["nid_number"]), values["nid_number"][-4:], values["payout_account_name"], values["payout_account_number"], values["payout_branch"],
                      password_hash, salt, commission_enabled, commission_percent, user["username"], now() if status == "approved" else current["approved_at"], str(data.get("reason", current["rejection_reason"]))[:500], int(match.group(1))))
                 if not result.rowcount: raise ValueError("Worker পাওয়া যায়নি")
+                con.execute("UPDATE users SET admin_access=? WHERE id=?", (admin_access, current["id"]))
                 audit(con, user["username"], "worker_" + (status or "profile_edited"), "user", match.group(1), {"fields": list(data)})
             return handler.reply(200, {"ok": True})
         except Exception as error: return handler.reply(400, {"error": str(error)})
