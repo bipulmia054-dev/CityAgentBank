@@ -6,7 +6,17 @@
   const norm=v=>String(v??'').replace(/\s+/g,' ').trim().toUpperCase();
   document.addEventListener('input',e=>{if(e.isTrusted)edited.add(e.target);},true);
   document.addEventListener('change',e=>{if(e.isTrusted)edited.add(e.target);},true);
-  const heading=()=>Array.from(document.querySelectorAll('h1,h2,h3,h4')).map(e=>e.textContent.trim());
+  const heading=()=>[...document.querySelectorAll('h1,h2,h3,h4'),...document.querySelectorAll('h5,h6,[role="heading"]')].map(e=>norm(e.textContent));
+  function detectPage(heads){
+    const matches=Object.keys(plan.steps).filter(s=>heads.includes(norm(s)));
+    if(matches.length===1)return matches[0];
+    if(matches.length>1)return null;
+    // Bank UI may render the title as a styled div, not a semantic heading.
+    // Only use an unambiguous set of observed controls, never arbitrary page text.
+    const unique=s=>document.querySelectorAll(s).length===1;
+    if(unique('input[type="file"][id^="nidFront-"]')&&unique('input[type="file"][id^="nidBack-"]')&&unique('input[placeholder="DD/MM/YYYY"]')&&unique('select#name'))return 'Upload NID';
+    return null;
+  }
   const notify=message=>{status=message;};
   function stop(){paused=true;plan=null;done.clear();clearInterval(timer);notify('Stopped — customer data cleared');}
   function setValue(el,value){
@@ -26,9 +36,9 @@
     try {
       if(!/^\/admin\/onboarding\/?$/.test(location.pathname)){stop();notify('Manual page / final report — stopped, customer data cleared');return;}
       const heads=heading();
-      let current=Object.keys(plan.steps).find(s=>heads.includes(s));
+      let current=detectPage(heads);
       if(!current && heads.some(h=>/fingerprint|provide customer photo|token verification|fatca/i.test(h))){notify('Manual: OTP / fingerprint / live photo / FATCA — complete yourself');return;}
-      if(!current){notify('Unmapped page — manual action');return;}
+      if(!current){notify('Unmapped page — manual action. Headings: '+(heads.join(' | ').slice(0,180)||'none'));return;}
       if(identityConflict(current)){paused=true;notify('STOP: NID differs from selected customer. Check bank session.');return;}
       if(current==='Nominee Information'&&document.querySelector('input#photo-0')){
         const verify=Array.from(document.querySelectorAll('button')).find(b=>b.textContent.trim()==='Verify');

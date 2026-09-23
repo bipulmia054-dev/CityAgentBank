@@ -5,6 +5,7 @@ import { readJson } from "./api-response.js";
 import { applicationMatches } from "./admin-tabs.js";
 import AdminPersonalInfo from "./AdminPersonalInfo.jsx";
 import { contactValidationError } from "./admin-personal-info.js";
+import { useAutosave, AutoSaveStatus, flushAutosaves, hasPendingAutosaves } from "./useAutosave.jsx";
 
 import {
   Camera,
@@ -2362,6 +2363,17 @@ function Records({ onBack, onEditCase }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(null);
+  const quickRevision=useRef(null);
+  const quickSave=useAutosave({session:editing?.id,value:editing,validate:v=>!v.name?.trim()?'Customer নাম লিখুন':v.email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.email)?'সঠিক Email লিখুন':'',write:async value=>{
+    const base=value.case,people=[...(base.people||[])];
+    people[0]={...people[0],name:value.name,nameBn:value.name_bn,nid:value.customer_number,email:value.email};
+    const updated={...base,name:value.name,people,details:{...base.details,nameBn:value.name_bn,customerId:value.customer_number,phone:value.phone,email:value.email},ekyc:{...base.ekyc,confirmed:false}};
+    const r=await fetch(`/api/admin/customers/${value.id}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({case:updated,revision:quickRevision.current})});
+    const result=await readJson(r);if(!r.ok)throw new Error(result.error||'Save হয়নি');quickRevision.current=result.revision;
+  }});
+  async function openQuick(row){try{const r=await fetch(`/api/admin/customers/${row.id}`),result=await readJson(r);if(!r.ok)throw new Error(result.error);quickRevision.current=result.customer.revision;setEditing(result.customer);}catch(e){alert(e.message);}}
+  async function closeQuick(){if(await quickSave.flush()){setEditing(null);load();}}
+  useEffect(()=>{if(!editing)return;window.documentStudioModalGoBack=closeQuick;return()=>{delete window.documentStudioModalGoBack;};},[editing]);
   async function load(value = query) {
     setLoading(true);
     try {
@@ -2380,23 +2392,6 @@ function Records({ onBack, onEditCase }) {
   useEffect(() => {
     load("");
   }, []);
-  async function saveEdit() {
-    const response = await fetch(`/api/customers/${editing.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: editing.name,
-        nameBn: editing.name_bn,
-        customerNumber: editing.customer_number,
-        phone: editing.phone,
-        email: editing.email,
-      }),
-    });
-    const result = await readJson(response);
-    if (!response.ok) return alert(result.error || "Edit save হয়নি");
-    setEditing(null);
-    load();
-  }
   async function deleteRow(row) {
     if (
       !confirm(
@@ -2412,11 +2407,11 @@ function Records({ onBack, onEditCase }) {
     load();
   }
   async function openCase(row) {
-    const response = await fetch(`/api/customers/${row.id}/edit`);
+    const response = await fetch(`/api/admin/customers/${row.id}`);
     const result = await readJson(response);
     if (!response.ok)
       return alert(result.error || "File edit-এর জন্য খোলা যায়নি");
-    onEditCase(result.case, row.id);
+    onEditCase(result.customer.case, row.id, result.customer.revision);
   }
   return (
     <div className="records">
@@ -2480,7 +2475,7 @@ function Records({ onBack, onEditCase }) {
               </a>
               <button
                 className="recordEdit"
-                onClick={() => setEditing({ ...row })}
+                onClick={() => openQuick(row)}
               >
                 <Pencil /> Details Edit
               </button>
@@ -2499,12 +2494,12 @@ function Records({ onBack, onEditCase }) {
         )}
       </section>
       {editing && (
-        <div className="modalBackdrop" onMouseDown={() => setEditing(null)}>
+        <div className="modalBackdrop" onMouseDown={closeQuick}>
           <section
             className="settingsModal recordEditor"
             onMouseDown={(e) => e.stopPropagation()}
           >
-            <button className="modalClose" onClick={() => setEditing(null)}>
+            <button className="modalClose" onClick={closeQuick}>
               <X />
             </button>
             <small>EDIT SAVED CUSTOMER</small>
@@ -2526,9 +2521,7 @@ function Records({ onBack, onEditCase }) {
                 />
               </label>
             ))}
-            <button className="primary full" onClick={saveEdit}>
-              <Check /> পরিবর্তন Save করুন
-            </button>
+            <AutoSaveStatus save={quickSave}/>
           </section>
         </div>
       )}
@@ -2825,10 +2818,9 @@ function AdminReviewMedia({ person, label }) {
 function AdminAiPhotoControls({ source, filename, onSave }) {
   const [preview, setPreview] = useState("");
   const [busy, setBusy] = useState(false);
-  const [saving, setSaving] = useState(false);
   const create = async (extraPrompt = "") => {
     setBusy(true);
-    try { setPreview((await makePassportPhoto(source, extraPrompt)).image); }
+    try { const image=(await makePassportPhoto(source, extraPrompt)).image;setPreview(image);await onSave(image); }
     catch (error) { alert(error.message); }
     finally { setBusy(false); }
   };
@@ -2836,36 +2828,30 @@ function AdminAiPhotoControls({ source, filename, onSave }) {
     const note = prompt("নতুন ছবির জন্য extra instruction লিখুন (optional)");
     if (note !== null) create(note);
   };
-  const save = async () => {
-    if (!preview) return;
-    setSaving(true);
-    try { await onSave(preview); setPreview(""); alert("AI photo save হয়েছে। Chrome extension-এও নতুন ছবি দেখা যাবে। "); }
-    catch (error) { alert(error.message); }
-    finally { setSaving(false); }
-  };
   return <section className="adminAiPhotoControls">
     <button type="button" className="secondary" disabled={busy || !source} onClick={() => create()}>{busy ? "AI photo তৈরি হচ্ছে…" : "AI দিয়ে ছবি তৈরি করুন"}</button>
     {preview && <div className="adminAiPhotoResult"><h4>AI Photo Preview</h4><PreviewImage src={preview} label="AI Passport Photo" portrait />
-      <div className="pdfActions"><a href={preview} download={`${filename}_AI.jpg`} className="secondary"><Download size={17}/> AI Photo Download</a><button type="button" className="secondary" disabled={busy || saving} onClick={remake}>Prompt দিয়ে আবার তৈরি করুন</button><button type="button" className="primary" disabled={saving} onClick={save}>{saving ? "Save হচ্ছে…" : "এই ছবি Save করুন"}</button><button type="button" className="secondary" disabled={busy || saving} onClick={() => setPreview("")}>বাদ দিন</button></div>
+<div className="pdfActions"><a href={preview} download={`${filename}_AI.jpg`} className="secondary"><Download size={17}/> AI Photo Download</a><button type="button" className="secondary" disabled={busy} onClick={remake}>Prompt দিয়ে আবার তৈরি করুন</button><small>ছবিটি Auto-save-এ যুক্ত হয়েছে; উপরের Save status দেখুন।</small><button type="button" className="secondary" disabled={busy} onClick={() => setPreview("")}>Preview বন্ধ করুন</button></div>
     </div>}
   </section>;
 }
 
 function AdminCaseModal({ data, close, reload }) {
-  const [caseData,setCaseData]=useState(data.customer.case),[fields,setFields]=useState([]),[saving,setSaving]=useState(false), c=data.customer;
+  const [caseData,setCaseData]=useState(data.customer.case),[fields,setFields]=useState([]), c=data.customer;
+  const revision = useRef(c.revision);
+  const autoSave = useAutosave({session:c.id,value:caseData,validate:contactValidationError,write:async value=>{
+    const r=await fetch('/api/admin/customers/'+c.id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({case:value,revision:revision.current})});
+    const result=await readJson(r);if(!r.ok)throw new Error(result.error||'Save হয়নি');revision.current=result.revision;
+  }});
+  const closeSaved = async () => { if(await autoSave.flush()){close();reload();} };
+  useEffect(()=>{window.documentStudioModalGoBack=closeSaved;return()=>{delete window.documentStudioModalGoBack;};},[caseData]);
   async function saveAiPhoto(index, image) {
-    const updated = {...caseData, people:caseData.people.map((person, position) => position === index ? {...person, photo:image} : person)};
-    const response = await fetch('/api/admin/customers/'+c.id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({case:updated})});
-    const result = await readJson(response);
-    if (!response.ok) throw new Error(result.error || 'AI photo save হয়নি');
-    setCaseData(updated);
-    await reload();
+    setCaseData(current=>({...current,people:current.people.map((person,position)=>position===index?{...person,photo:image}:person)}));
   }
   const options=[["people.0.idFront","Applicant NID Front"],["people.0.idBack","Applicant NID Back"],["people.0.photo","Applicant Photo"],["people.0.nid","Applicant NID Number"],["people.0.addressBn","Applicant Address"],["people.1.idFront","Nominee NID Front"],["people.1.idBack","Nominee NID Back"],["people.1.photo","Nominee Photo"],["people.1.birthCertificate","Nominee Birth Certificate"],["people.1.nid","Nominee ID Number"],["declaration.rawDescription","Income details"],["declaration.monthlyIncome","Monthly income"]];
   const updatePerson=(i,key,value)=>setCaseData({...caseData,people:caseData.people.map((p,n)=>n===i?{...p,[key]:value}:p)});
-  async function saveEdit(){const validationError=contactValidationError(caseData);if(validationError)return alert(validationError);setSaving(true);try{const r=await fetch('/api/admin/customers/'+c.id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({case:caseData})}),x=await readJson(r);if(!r.ok)throw new Error(x.error);alert('Details save হয়েছে');reload();}catch(e){alert(e.message)}finally{setSaving(false)}}
-  async function recollect(){const note=prompt('Worker-কে কী আবার সংগ্রহ করতে হবে লিখুন');if(!note||!fields.length)return alert('Field নির্বাচন ও নির্দেশনা দিন');const r=await fetch('/api/admin/customers/'+c.id+'/review',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'correction',note,fields})}),x=await readJson(r);if(!r.ok)return alert(x.error);alert('Worker-এর কাছে Recollection পাঠানো হয়েছে');close();reload();}
-  return <div className="modalBackdrop adminPreviewBackdrop" onMouseDown={close}><section className="adminCaseModal" onMouseDown={e=>e.stopPropagation()}><button className="modalClose" onClick={close}><X/></button><div className="adminCaseHead"><div><small>FULL APPLICATION REVIEW</small><h1>{c.serial} — {caseData.name}</h1><p><b>TW:</b> {c.worker_name||c.created_by} • {c.worker_phone||'—'} • {c.created_by}</p></div><span className={'statusTag '+c.workflow_status}>{statusLabel[c.workflow_status]||c.workflow_status}</span></div><div className="adminReviewGrid"><div><AdminPersonalInfo caseData={caseData} onChange={setCaseData} />{(caseData.people||[]).map((p,i)=><section className="reviewPerson" key={p.id||i}><h2>{i?'Nominee':'Applicant'}</h2><div className="reviewFields">{[["name","Name"],["nameBn","নাম"],["relationship","Applicant-এর সাথে সম্পর্ক"],["nid","NID / ID"],["dob","DOB"],["fatherNameEn","Father"],["motherNameEn","Mother"],["addressEn","Address English"],["addressBn","ঠিকানা"],["profession","Profession"]].map(([key,label])=><label key={key}><span>{label}</span><input value={p[key]||''} onChange={e=>updatePerson(i,key,e.target.value)}/></label>)}</div><AdminAiPhotoControls source={p.photo} filename={personBase(p)} onSave={image=>saveAiPhoto(i,image)} /><AdminReviewMedia person={p} label={i?'Nominee ID Card':'Applicant ID Card'} /></section>)}<DeclarationForm value={caseData.declaration||{}} change={declaration=>setCaseData({...caseData,declaration})} applicant={caseData.people?.[0]} signature={caseData.docs?.find(d=>d.kind==='signature')?.pages?.[0]}/><section className="reviewPerson"><h2>Signature ও Additional Documents</h2><details className="reviewMedia"><summary>Signature ও document files দেখুন</summary><div className="adminImageGrid">{(caseData.docs||[]).flatMap(d=>(d.pages||[]).map((src,i)=><PreviewImage key={(d.id||d.name)+i} src={src} label={(d.name||d.kind)+' '+(i+1)}/>))}</div></details></section></div><aside className="recollectionSelector"><h3>Recollection নির্বাচন</h3><p>শুধু নির্বাচিত item Worker আবার খুলতে পারবে।</p>{options.map(([value,label])=><label key={value}><input type="checkbox" checked={fields.includes(value)} onChange={e=>setFields(e.target.checked?[...fields,value]:fields.filter(v=>v!==value))}/><span>{label}</span></label>)}<button className="secondary full" onClick={recollect}><RefreshCw/> Recollection পাঠান</button><button className="primary full" disabled={saving} onClick={saveEdit}><Check/> Admin Edit Save</button><a className="recordDownload" href={'/api/customers/'+c.id+'/download'}><Download/> Full ZIP Download</a></aside></div></section></div>;
+  async function recollect(){if(!(await autoSave.flush()))return;const note=prompt('Worker-কে কী আবার সংগ্রহ করতে হবে লিখুন');if(!note||!fields.length)return alert('Field নির্বাচন ও নির্দেশনা দিন');const r=await fetch('/api/admin/customers/'+c.id+'/review',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'correction',note,fields})}),x=await readJson(r);if(!r.ok)return alert(x.error);alert('Worker-এর কাছে Recollection পাঠানো হয়েছে');close();reload();}
+return <div className="modalBackdrop adminPreviewBackdrop" onMouseDown={closeSaved}><section className="adminCaseModal" onMouseDown={e=>e.stopPropagation()}><button className="modalClose" onClick={closeSaved}><X/></button><div className="adminCaseHead"><div><small>FULL APPLICATION REVIEW</small><h1>{c.serial} — {caseData.name}</h1><p><b>TW:</b> {c.worker_name||c.created_by} • {c.worker_phone||'—'} • {c.created_by}</p></div><span className={'statusTag '+c.workflow_status}>{statusLabel[c.workflow_status]||c.workflow_status}</span></div><div className="adminReviewGrid"><div><AutoSaveStatus save={autoSave}/><AdminPersonalInfo caseData={caseData} onChange={setCaseData} />{(caseData.people||[]).map((p,i)=><section className="reviewPerson" key={p.id||i}><h2>{i?'Nominee':'Applicant'}</h2><div className="reviewFields">{[["name","Name"],["nameBn","নাম"],["relationship","Applicant-এর সাথে সম্পর্ক"],["nid","NID / ID"],["dob","DOB"],["fatherNameEn","Father"],["motherNameEn","Mother"],["addressEn","Address English"],["addressBn","ঠিকানা"],["profession","Profession"]].map(([key,label])=><label key={key}><span>{label}</span><input value={p[key]||''} onChange={e=>updatePerson(i,key,e.target.value)}/></label>)}</div><AdminAiPhotoControls source={p.photo} filename={personBase(p)} onSave={image=>saveAiPhoto(i,image)} /><AdminReviewMedia person={p} label={i?'Nominee ID Card':'Applicant ID Card'} /></section>)}<DeclarationForm value={caseData.declaration||{}} change={declaration=>setCaseData({...caseData,declaration})} applicant={caseData.people?.[0]} signature={caseData.docs?.find(d=>d.kind==='signature')?.pages?.[0]}/><section className="reviewPerson"><h2>Signature ও Additional Documents</h2><details className="reviewMedia"><summary>Signature ও document files দেখুন</summary><div className="adminImageGrid">{(caseData.docs||[]).flatMap(d=>(d.pages||[]).map((src,i)=><PreviewImage key={(d.id||d.name)+i} src={src} label={(d.name||d.kind)+' '+(i+1)}/>))}</div></details></section></div><aside className="recollectionSelector"><h3>Recollection নির্বাচন</h3><p>শুধু নির্বাচিত item Worker আবার খুলতে পারবে।</p>{options.map(([value,label])=><label key={value}><input type="checkbox" checked={fields.includes(value)} onChange={e=>setFields(e.target.checked?[...fields,value]:fields.filter(v=>v!==value))}/><span>{label}</span></label>)}<button className="secondary full" onClick={recollect}><RefreshCw/> Recollection পাঠান</button><AutoSaveStatus save={autoSave}/><a className="recordDownload" href={'/api/customers/'+c.id+'/download'}><Download/> Full ZIP Download</a></aside></div></section></div>;
 }
 
 function AdminPortal({ openRecords, actions, master }) {
@@ -2971,6 +2957,14 @@ function App() {
     [draftSavedAt, setDraftSavedAt] = useState(""),
     [showSettings, setShowSettings] = useState(false);
   const [draftReady, setDraftReady] = useState(false);
+  const [editSession,setEditSession] = useState(null);
+  const [extraCase,setExtraCase] = useState({});
+  const editRevision = useRef(null);
+  const editedCase = useMemo(()=>({...extraCase,name,details,people,docs,declaration,photoPrintLayout,customerConsent}),[extraCase,name,details,people,docs,declaration,photoPrintLayout,customerConsent]);
+  const fileAutoSave = useAutosave({session:editSession,value:editedCase,validate:value=>!value.name?.trim()?'Customer নাম লিখুন':contactValidationError(value),write:async value=>{
+    const response=await fetch(`/api/admin/customers/${editingCustomerId}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({case:value,revision:editRevision.current})});
+    const result=await readJson(response);if(!response.ok)throw new Error(result.error||'Save হয়নি');editRevision.current=result.revision;
+  }});
   const [confirmClear,setConfirmClear] = useState(false);
   const draftOwner = useRef(null);
   useEffect(() => { setPhotoPrintPreview(""); }, [people]);
@@ -3019,7 +3013,7 @@ function App() {
       .catch(() => setDraftSavedAt("Draft save হয়নি—ডিভাইসের storage খালি করুন; এখনই বন্ধ করবেন না"));
   }, [auth?.authenticated,auth?.username,draftReady,step,name,details,people,docs,declaration,photoPrintLayout,editingCustomerId,customerConsent,savedSerial,savedCustomerId]);
   useEffect(() => {
-    window.documentStudioBeforeReload = flushDraft;
+    window.documentStudioBeforeReload = async () => { await flushDraft();if(!(await flushAutosaves()))throw new Error('Auto-save হয়নি। আগে Save error ঠিক করুন।'); };
     window.documentStudioReload = () => {
       if (window.DocumentStudioAndroid?.reload) { window.DocumentStudioAndroid.reload(); return true; }
       return false;
@@ -3033,6 +3027,8 @@ function App() {
   }, [auth,draftReady]);
   useEffect(() => {
     window.documentStudioGoBack = () => {
+      if(window.documentStudioModalGoBack){void window.documentStudioModalGoBack();return true;}
+      if(hasPendingAutosaves()){void flushAutosaves().then(ok=>{if(ok)window.documentStudioGoBack?.();});return true;}
       if (!auth?.authenticated) return false;
       if (showSettings) { setShowSettings(false); return true; }
       if (confirmClear) { setConfirmClear(false); return true; }
@@ -3047,6 +3043,8 @@ function App() {
     return () => { delete window.documentStudioGoBack; };
   }, [auth, step, showSettings, confirmClear]);
   async function clearCurrentDraft() {
+    if (!(await fileAutoSave.flush())) return;
+    setEditSession(null);setExtraCase({});
     setConfirmClear(false);
     try {
       await deleteDraft(auth.username);
@@ -3118,6 +3116,7 @@ function App() {
     }
   }
   async function save() {
+    if(editSession!==null){if(await fileAutoSave.flush()){setSavedCustomerId(editingCustomerId);setStep(4);}return;}
     if (!name.trim()) return alert("Customer/Case-এর নাম লিখুন");
     setSaving(true);
     try {
@@ -3177,11 +3176,16 @@ function App() {
       />
     );
   async function logout() {
+    if(!(await flushAutosaves()))return;
     await flushDraft();
     await fetch("/api/auth/logout", { method: "POST" });
     location.reload();
   }
-  function editSavedCase(caseData, customerId) {
+  async function editSavedCase(caseData, customerId, revision) {
+    if(!(await fileAutoSave.flush()))return;
+    editRevision.current=revision;
+    setExtraCase(caseData);
+    setEditSession(`${customerId}:${Date.now()}`);
     setName(caseData.name || "");
     setDetails(caseData.details || details);
     setPeople(
@@ -3203,7 +3207,7 @@ function App() {
     setStep(2);
   }
   const actions = <>
-    <button className="appIconButton" aria-label="Reload app" title="Reload app" onClick={()=>window.documentStudioReload?.() || location.reload()}><RefreshCw/></button>
+    <button className="appIconButton" aria-label="Reload app" title="Reload app" onClick={async()=>{if(await flushAutosaves())window.documentStudioReload?.() || location.reload();}}><RefreshCw/></button>
     {hasAdminAccess(auth) && <button className="secondary viewSwitch" onClick={()=>setStep(step === 6 ? 0 : 6)}><ShieldCheck/>{step === 6 ? "User View" : "Admin View"}</button>}
     {[1,2,3].includes(step) && <button className="appIconButton" aria-label="Clear current draft" title="Clear all draft data" onClick={()=>setConfirmClear(true)}><Trash2/></button> }
     {hasAdminAccess(auth) && <button className="appIconButton" aria-label="AI Settings" title="AI Settings" onClick={() => setShowSettings(true)}><Settings/></button>}
@@ -3225,6 +3229,7 @@ function App() {
       {confirmClear && <div className="modalBackdrop"><section className="settingsModal" role="dialog" aria-modal="true" aria-label="Clear draft confirmation"><h2>চলমান Draft Clear করবেন?</h2><p>সব scan, ছবি ও অসম্পূর্ণ details মুছে যাবে। Server-এ জমা দেওয়া ফাইল থাকবে।</p><button className="primary" onClick={clearCurrentDraft}>Clear all draft data</button><button className="secondary" onClick={()=>setConfirmClear(false)}>Cancel</button></section></div>}
       {hasAdminAccess(auth) && <ApiSettings open={showSettings} onClose={() => setShowSettings(false)} />}
       <div className="appPageContents">
+        {editSession!==null && <AutoSaveStatus save={fileAutoSave}/>}
         {step === 0 ? (
           <WorkerDashboard startNew={() => setStep(1)} actions={actions} />
         ) : step === 6 ? (
@@ -3761,7 +3766,7 @@ function App() {
                 disabled={saving}
               >
                 <Database />
-                {saving ? "Server-এ save হচ্ছে…" : "Server-এ Save করুন"}
+                {saving ? "Server-এ save হচ্ছে…" : editSession!==null ? "Edit শেষ করুন" : "Server-এ Save করুন"}
               </button>
             </section>
           </div>
@@ -3781,6 +3786,7 @@ function App() {
             <button
               className="secondary"
               onClick={() => {
+                setEditSession(null);setExtraCase({});
                 setName("");
                 setDetails({
                   customerId: "",

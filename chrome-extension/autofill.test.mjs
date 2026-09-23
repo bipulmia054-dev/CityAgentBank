@@ -74,3 +74,22 @@ test('FATCA subsection does not block Source of Fund on Additional page',()=>{
   h.send({type:'CITY_AUTOFILL_START',plan:{applicantNid:'123',steps:{'Additional File Upload':[{selector:'input#fund',type:'file',value:'data:image/jpeg;base64,YWJj',filename:'fund.jpg',label:'fund'}]}}});
   assert.equal(input.files.length,1);assert.equal(h.clicks,0);
 });
+test('heading matching normalizes whitespace and case',()=>{
+  const h=harness('  Upload  NID\n');
+  h.send({type:'CITY_AUTOFILL_START',plan:{applicantNid:'123',steps:{'Upload NID':[{type:'text',selector:'input#date',label:'date',value:'test'}]}}});
+  assert.equal(h.status().step,'Upload NID');
+});
+test('ARIA headings and non-heading NID title are recognized safely',()=>{
+  for(const aria of [true,false]){
+    const h=harness(''),input=new h.Input();
+    if(aria)h.nodes['h5,h6,[role="heading"]']=[{textContent:'Upload NID'}];
+    else for(const s of ['input[type="file"][id^="nidFront-"]','input[type="file"][id^="nidBack-"]','input[placeholder="DD/MM/YYYY"]','select#name'])h.nodes[s]=[input];
+    h.send({type:'CITY_AUTOFILL_START',plan:{applicantNid:'123',steps:{'Upload NID':[{type:'text',selector:'input#date',label:'date',value:'test'}]}}});
+    assert.equal(h.status().step,'Upload NID');
+  }
+});
+test('partial upload controls are not sufficient for fallback detection',()=>{
+  const h=harness('');h.nodes['input[type="file"][id^="nidFront-"]']=[new h.Input()];
+  h.send({type:'CITY_AUTOFILL_START',plan:{applicantNid:'123',steps:{'Upload NID':[]}}});
+  assert.match(h.status().status,/Unmapped/);
+});

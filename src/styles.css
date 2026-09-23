@@ -2843,3 +2843,6 @@ body { background:linear-gradient(135deg,#fff,#f8f8f9 55%,#fff4f4); color:var(--
 .usersOnly .adminUserGrid { grid-template-columns:minmax(0,1fr); }
 .reviewFields select{width:100%;min-width:0;padding:9px;border:1px solid #ddd;border-radius:8px;background:#fff;color:#222}
 .reviewPerson input[type=checkbox]{width:auto;margin-right:8px}
+/* Always-visible save feedback, including recoverable validation/network errors. */
+.autoSaveStatus { padding: 12px 16px; margin: 8px 0; background: #edf6f2; color: #174c40; border: 1px solid #b9d6cb; border-radius: 10px; overflow-wrap: anywhere; }
+.autoSaveStatus button { margin-left: 12px; }

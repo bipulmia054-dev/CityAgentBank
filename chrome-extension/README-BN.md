@@ -1,9 +1,9 @@
-# Chrome Extension 2.4.0 — eKYC Autofill
+# Chrome Extension 2.4.1 — eKYC Autofill
 
 ## নতুন Auto Fill ব্যবহার
 
 1. Website update deploy করার পরে Admin → Applications → A–Z Preview & Edit খুলুন। Email/Gender, Religion, Education, Single/Married, Married হলে Spouse Name, bank profession/sector, monthly income, English address ও nominee relation/address পূরণ করে Admin Edit Save করুন। Risk answers যাচাই করে confirmation tick দিন। কোনো তথ্য default হিসেবে সত্য ধরা হয় না।
-2. নতুন ZIP extract করে Chrome Extensions-এ ওই `chrome-extension` folder Load unpacked করুন। পুরোনো folder ব্যবহার করলে নতুন ফাইল সেখানে বসিয়ে Reload করুন। Version 2.4.0 নিশ্চিত করুন। Bank domain-এর নতুন permission Chrome চাইলে নিজে review/allow করুন।
+2. নতুন ZIP extract করে Chrome Extensions-এ ওই `chrome-extension` folder Load unpacked করুন। পুরোনো folder ব্যবহার করলে নতুন ফাইল সেখানে বসিয়ে Reload করুন। Version 2.4.1 নিশ্চিত করুন। Bank domain-এর নতুন permission Chrome চাইলে নিজে review/allow করুন।
 3. Extension install/update-এর পরে নতুন bank session শুরু করার আগে bank tab refresh করুন। অসমাপ্ত account form refresh করবেন না। Login/mobile/OTP নিজে দিন।
 4. Extension panel-এ customer বেছে bank onboarding tab active রেখে Start Auto Fill চাপুন এবং customer/destination নিশ্চিত করুন। শুরুতে সর্বশেষ saved record, Signature Card ও re-uploaded Income Declaration আনা হয়।
 5. Mapped page-এ গেলে fields নিজে পূরণ হবে: Upload NID → Dedupe → Personal Information → Nominee → Signature → Risk Grading → Source of Fund। Nominee Verify নিজে করার পরে images/share/relation/address ভরবে। NID front/back-এ existing extension seal থাকে; prepared JPG files 200,000 bytes-এর কম।

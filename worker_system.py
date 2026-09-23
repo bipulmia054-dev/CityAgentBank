@@ -618,7 +618,7 @@ def dispatch(handler, method, path, db, data_dir, digest):
                     user["username"],now(),int(match.group(1))))
                 if not result.rowcount:raise ValueError("Customer পাওয়া যায়নি")
                 audit(con,user["username"],"admin_case_edited","customer",match.group(1))
-            return handler.reply(200,{"ok":True})
+            return handler.reply(200,{"ok":True,"revision":current['revision']+1})
         except Exception as error:return handler.reply(400,{"error":str(error)})
 
     match = re.fullmatch(r"/api/admin/users/(\d+)", path)
