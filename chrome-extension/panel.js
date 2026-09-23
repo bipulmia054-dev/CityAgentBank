@@ -1,12 +1,14 @@
 import {readJson} from '../src/api-response.js';
 import {declarationCanvas, declarationPdf} from '../src/declaration.js';
 import { DEFAULT_SERVER, casePeople, safeImage } from './model.mjs';
+import {setupAutofill,haltAutofill} from './panel-autofill.js';
 const $ = id => document.getElementById(id);
 const server = DEFAULT_SERVER;
+setupAutofill({getSelected:()=>selected,api,compress:compressedJpeg,stamp:stampedIdentityBlob});
 let selected = null, requestVersion = 0, selectedCase = null, selectedRevision = null, declarationDirty = false, lastSeenRevision = null;
 const blobs = new Set();
 function notice(message = '', error = false) { $('notice').textContent = message; $('notice').className = error ? 'error' : ''; }
-function clearRecords() { requestVersion++; selected = null; selectedCase = null; declarationDirty = false; $('results').replaceChildren(); $('record-content').replaceChildren(); $('record').hidden = true; $('results').hidden = false; }
+function clearRecords() { haltAutofill(); requestVersion++; selected = null; selectedCase = null; declarationDirty = false; $('results').replaceChildren(); $('record-content').replaceChildren(); $('record').hidden = true; $('results').hidden = false; }
 function unauthenticated() { clearRecords(); $('workspace').hidden = true; $('login').hidden = false; }
 async function api(path, options = {}) {
   const response = await fetch(server + path, { ...options, credentials: 'include', cache: 'no-store', redirect: 'error', signal: options.signal || AbortSignal.timeout(90000), headers: { 'Content-Type': 'application/json', ...options.headers } });
@@ -81,7 +83,7 @@ async function compressedJpeg(source, maximumBytes = 200 * 1024) {
   let width=Math.min(image.naturalWidth,1800), height=Math.round(image.naturalHeight*width/image.naturalWidth), quality=.86;
   while (width >= 160) {
     const canvas=document.createElement('canvas'); canvas.width=width; canvas.height=height;
-    canvas.getContext('2d').drawImage(image,0,0,width,height);
+    const ctx=canvas.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,width,height);ctx.drawImage(image,0,0,width,height);
     const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',quality));
     if(blob && blob.size<=maximumBytes)return blob;
     if(quality>.45) quality-=.12; else { width=Math.round(width*.78); height=Math.round(height*.78); quality=.82; }
@@ -89,7 +91,7 @@ async function compressedJpeg(source, maximumBytes = 200 * 1024) {
   throw new Error('ছবিটি 200 KB-এর নিচে compress করা যায়নি');
 }
 async function downloadImage(source, name) { downloadBlob(await compressedJpeg(source),`${name}.jpg`); }
-async function downloadStampedIdentity(source, name) {
+async function stampedIdentityBlob(source) {
   const [card, seal] = await Promise.all([
     new Promise((resolve, reject) => { const image = new Image(); image.onload=()=>resolve(image); image.onerror=reject; image.src=source; }),
     new Promise((resolve, reject) => { const image = new Image(); image.onload=()=>resolve(image); image.onerror=reject; image.src=chrome.runtime.getURL('agent-user-id-seal.jpg'); }),
@@ -99,8 +101,9 @@ async function downloadStampedIdentity(source, name) {
   const canvas=document.createElement('canvas');canvas.width=cardWidth+sealWidth;canvas.height=cardHeight;
   const context=canvas.getContext('2d');context.fillStyle='#fff';context.fillRect(0,0,canvas.width,canvas.height);context.drawImage(card,0,0,cardWidth,cardHeight);
   context.save();context.translate(cardWidth+sealWidth/2,cardHeight/2);context.rotate(-Math.PI/2);context.drawImage(seal,-cardHeight/2,-sealWidth/2,cardHeight,sealWidth);context.restore();
-  downloadBlob(await compressedJpeg(canvas.toDataURL('image/png')),`${name}.jpg`);
+  return compressedJpeg(canvas.toDataURL('image/png'),199999);
 }
+async function downloadStampedIdentity(source,name){downloadBlob(await stampedIdentityBlob(source),`${name}.jpg`);}
 function applicantFilename(part) {
   const applicant = casePeople(selectedCase || {}).applicant || {};
   const name = String(applicant.name || applicant.nameBn || selected?.name || 'APPLICANT').toUpperCase().replace(/[^A-Z0-9]+/g,'_').replace(/^_|_$/g,'') || 'APPLICANT';
@@ -203,7 +206,7 @@ function declarationCard(caseData) {
   setTimeout(()=>render().catch(error=>{message.textContent=error.message;}),0);
 }
 async function openRecord(row) {
-  const version = ++requestVersion; selected = row; $('record-content').replaceChildren(); $('results').hidden = true; $('record').hidden = false;
+  haltAutofill(); const version = ++requestVersion; selected = row; $('record-content').replaceChildren(); $('results').hidden = true; $('record').hidden = false;
   $('record-title').textContent = row.name || row.name_bn || 'Customer'; $('serial').textContent = row.serial || ''; notice('Details আসছে…');
   let caseData = {}, data = {};
   try { data = await api(`/api/customers/${encodeURIComponent(row.id)}/extension`); if (version !== requestVersion) return; caseData = data.case || {}; selectedCase=caseData; selectedRevision=data.revision; lastSeenRevision=data.revision; declarationDirty=false; notice(); }
@@ -215,6 +218,7 @@ async function openRecord(row) {
   else { const missing = document.createElement('p'); missing.textContent = 'Nominee details are not available.'; $('record-content').append(missing); }
   if(version===requestVersion) signatureCards().catch(showError);
   const profession=document.createElement('section');profession.className='person';profession.innerHTML='<h3>Profession</h3>';fields(profession,[["Profession / work",applicant.profession||'']]);$('record-content').append(profession);
+  const extra=document.createElement('section');extra.innerHTML='<h3>Saved eKYC details</h3>';fields(extra,[['Gender',applicant.gender],['Religion',caseData.ekyc?.religion],['Education',caseData.ekyc?.education],['Marital status',caseData.ekyc?.maritalStatus],['Spouse',caseData.ekyc?.maritalStatus==='MARRIED'?caseData.ekyc.spouseName:''],['Bank profession',caseData.ekyc?.profession],['Monthly income',caseData.ekyc?.monthlyIncome]]);$('record-content').append(extra);
   declarationCard(caseData);
   const complete=document.createElement('section');complete.className='completeAccount';const completeTitle=document.createElement('h3');completeTitle.textContent='Account completion';const account=document.createElement('input');account.placeholder='City Bank account number';account.inputMode='numeric';const completeButton=document.createElement('button');completeButton.textContent='Complete account';completeButton.onclick=async()=>{try{completeButton.disabled=true;await api(`/api/admin/customers/${row.id}/review`,{method:'PUT',body:JSON.stringify({action:'complete',accountNumber:account.value})});notice('Account completed হয়েছে');}catch(error){showError(error);}finally{completeButton.disabled=false;}};complete.append(completeTitle,account,completeButton);$('record-content').append(complete);
 }
@@ -226,7 +230,7 @@ setInterval(async()=>{
   try{const result=await api(`/api/customers/${id}/revision`);if(selected?.id===id&&result.revision!==lastSeenRevision){await signatureCards();lastSeenRevision=result.revision;if(!declarationDirty){notice('ফাইল আপডেট হয়েছে—সর্বশেষ Signature Card দেখানো হচ্ছে। অন্য details দেখতে ফাইল আবার খুলুন।');}else{notice('Server-এ file update হয়েছে। আপনার edit রাখা আছে; Save conflict হলে নতুন file খুলুন।');}}}catch(error){showError(error);}finally{polling=false;}
 },500);
 $('search-form').addEventListener('submit', event => { event.preventDefault(); search(); });
-$('back').addEventListener('click', () => { requestVersion++; selected = null; $('record').hidden = true; $('record-content').replaceChildren(); $('results').hidden = false; notice(); });
+$('back').addEventListener('click', () => { haltAutofill(); requestVersion++; selected = null; $('record').hidden = true; $('record-content').replaceChildren(); $('results').hidden = false; notice(); });
 $('login-form').addEventListener('submit', async event => {
   event.preventDefault(); $('login-button').disabled = true;
   try { await api('/api/auth/login', { method: 'POST', body: JSON.stringify({ username: $('username').value.trim(), password: $('password').value }) }); $('password').value = ''; await connect(); }

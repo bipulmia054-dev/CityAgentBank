@@ -1,16 +1,18 @@
 {
   "manifest_version": 3,
   "name": "City Amjhupi",
-  "version": "2.3.1",
+  "version": "2.4.0",
   "minimum_chrome_version": "141",
-  "description": "City Amjhupi customer search and document downloads.",
+  "description": "City Amjhupi customer documents and operator-controlled City Bank eKYC autofill.",
   "permissions": [
     "sidePanel",
     "storage"
   ],
   "host_permissions": [
-    "https://citybank.abmgroup.tech/*"
+    "https://citybank.abmgroup.tech/*",
+    "https://dob-ab.citybankplc.com/*"
   ],
+  "content_scripts": [{"matches":["https://dob-ab.citybankplc.com/admin/onboarding*"],"js":["autofill-content.js"],"run_at":"document_idle"}],
   "action": {
     "default_title": "Open City Amjhupi",
     "default_icon": {

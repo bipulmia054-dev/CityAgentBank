@@ -2841,3 +2841,5 @@ body { background:linear-gradient(135deg,#fff,#f8f8f9 55%,#fff4f4); color:var(--
 .viewSwitch { white-space:nowrap; }
 @media (max-width:600px) { .sectionTabs button { flex:1 1 calc(50% - 10px); padding:10px; } .viewSwitch { padding:8px; font-size:12px; } }
 .usersOnly .adminUserGrid { grid-template-columns:minmax(0,1fr); }
+.reviewFields select{width:100%;min-width:0;padding:9px;border:1px solid #ddd;border-radius:8px;background:#fff;color:#222}
+.reviewPerson input[type=checkbox]{width:auto;margin-right:8px}

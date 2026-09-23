@@ -24,9 +24,11 @@ test('only embedded raster images allowed', () => {
   assert.equal(safeImage('data:image/png;base64,YQ=='),'data:image/png;base64,YQ==');
   for(const bad of ['https://tracker.invalid/a.png','javascript:alert(1)','data:image/svg+xml;base64,YQ==']) assert.equal(safeImage(bad),'');
 });
-test('manifest files exist, no popup, content scripts or browsing permissions', () => {
+test('manifest files exist, no popup, bank-only content script and no broad browsing permissions', () => {
   const manifest=JSON.parse(readFileSync(new URL('./manifest.json',import.meta.url)));
-  assert.equal(manifest.manifest_version,3); assert.equal(manifest.action.default_popup,undefined); assert.equal(manifest.content_scripts,undefined);
+  assert.equal(manifest.manifest_version,3); assert.equal(manifest.action.default_popup,undefined);
+  assert.deepEqual(manifest.content_scripts,[{matches:['https://dob-ab.citybankplc.com/admin/onboarding*'],js:['autofill-content.js'],run_at:'document_idle'}]);
+  assert.ok(existsSync(new URL('./autofill-content.js',import.meta.url)));
   assert.deepEqual(manifest.permissions,['sidePanel','storage']);
   for(const file of [manifest.background.service_worker,manifest.side_panel.default_path,'panel.js','panel.css']) assert.ok(existsSync(new URL(file,import.meta.url)));
 });
@@ -37,8 +39,8 @@ test('toolbar click opens global panel without toggle/close', async () => {
   click({windowId:17}); await Promise.resolve(); assert.equal(opened.windowId,17); assert.equal(opened.tabId,undefined);
 });
 
-test('production extension has only the permanent server permission',()=>{
+test('production extension permits only permanent server and exact bank origin',()=>{
  const manifest=JSON.parse(readFileSync(new URL('./manifest.json',import.meta.url)));
- assert.deepEqual(manifest.host_permissions,['https://citybank.abmgroup.tech/*']);
+ assert.deepEqual(manifest.host_permissions,['https://citybank.abmgroup.tech/*','https://dob-ab.citybankplc.com/*']);
  assert.equal(manifest.optional_host_permissions,undefined);
 });

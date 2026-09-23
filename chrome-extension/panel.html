@@ -11,8 +11,8 @@
       <div class="session"><span id="user"></span><button id="logout" class="quiet">Logout</button></div>
       <form id="search-form"><label for="query">Customer খুঁজুন</label><div class="search"><input id="query" type="search" placeholder="নাম, ফোন, NID অথবা email" maxlength="200" autocomplete="off"><button id="search-button">Search</button></div></form>
       <div id="results" aria-live="polite"></div>
-      <section id="record" hidden><button id="back" class="quiet">← Search result</button><h2 id="record-title"></h2><p id="serial"></p><div id="record-content"></div><div class="actions"><button id="download">Customer ZIP Download</button><button id="open-server" class="quiet">মূল software খুলুন ↗</button></div></section>
+      <section id="record" hidden><button id="back" class="quiet">← Search result</button><h2 id="record-title"></h2><p id="serial"></p><section aria-label="Bank autofill"><h3>Bank Auto Fill</h3><p>আগে Admin A–Z-এ তথ্য Save করুন। Login/OTP/Fingerprint/Live Photo/Verify/Next/Final Submit manual।</p><div class="actions"><button id="autofill-start">Start Auto Fill</button><button id="autofill-pause">Pause</button><button id="autofill-resume">Resume</button><button id="autofill-stop">Stop</button></div><p id="autofill-status" role="status">Stopped</p></section><div id="record-content"></div><div class="actions"><button id="download">Customer ZIP Download</button><button id="open-server" class="quiet">মূল software খুলুন ↗</button></div></section>
     </section>
-    <footer>শুধু Save করা customer দেখাবে। তথ্য অন্য webpage-এ পাঠানো হয় না।</footer>
+    <footer>Auto Fill চালু করলে নির্বাচিত customer-এর তথ্য শুধু অনুমোদিত City Bank onboarding tab-এ পাঠানো হয়।</footer>
   </main><script type="module" src="panel.js"></script>
 </body></html>
