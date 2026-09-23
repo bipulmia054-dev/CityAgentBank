@@ -7,7 +7,7 @@ export default function AdminPersonalInfo({ caseData, onChange }) {
   const update = (key, value) => onChange(updateApplicantContact(caseData, key, value));
   return <><section className="reviewPerson">
     <h2>Applicant Email ও Gender</h2>
-    <p>গ্রাহকের নিশ্চিত তথ্য লিখুন। Admin Edit Save চাপলে এই customer file-এ সংরক্ষণ হবে।</p>
+    <p>গ্রাহকের নিশ্চিত তথ্য লিখুন। পরিবর্তন Auto-save হবে; Save status দেখুন।</p>
     <div className="reviewFields">
       <label><span>Email</span><input type="email" autoComplete="off" value={email}
         placeholder="গ্রাহকের Email (না থাকলে খালি রাখুন)"

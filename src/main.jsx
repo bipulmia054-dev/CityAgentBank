@@ -4,6 +4,8 @@ import { createRoot } from "react-dom/client";
 import { readJson } from "./api-response.js";
 import { applicationMatches } from "./admin-tabs.js";
 import AdminPersonalInfo from "./AdminPersonalInfo.jsx";
+import AdminAiReview from "./AdminAiReview.jsx";
+import {reviewFields,readPath} from './ekyc-review.js';
 import { contactValidationError } from "./admin-personal-info.js";
 import { useAutosave, AutoSaveStatus, flushAutosaves, hasPendingAutosaves } from "./useAutosave.jsx";
 
@@ -2071,7 +2073,7 @@ function DeclarationForm({ value, change, applicant, signature }) {
               polishedDescription: "",
             })
           }
-          placeholder="যেমন: আমি বিপুল মিয়া, সিটি ব্যাংকে চাকরি করি..."
+          placeholder="নাম, কী কাজ করেন ও আয়ের উৎস লিখুন। চাকরি/ব্যবসা হলে প্রতিষ্ঠান/ব্যবসার নাম এবং ঠিকানা আলাদা করে লিখুন।"
         />
       </label>
       <button
@@ -2079,8 +2081,9 @@ function DeclarationForm({ value, change, applicant, signature }) {
         onClick={improve}
         disabled={value.busy}
       >
-        <ScanLine /> {value.busy ? "AI লিখছে…" : "AI দিয়ে সুন্দর বাংলায় সাজান"}
+        <ScanLine /> {value.busy ? "AI লিখছে…" : "AI দিয়ে সহজ ও স্পষ্ট বাংলায় সাজান"}
       </button>
+      <p className="hint">ব্যবসায়ী: ব্যবসার নাম, ধরন ও ঠিকানা দিন। চাকরিজীবী: প্রতিষ্ঠান, কাজ/পদ ও কর্মস্থলের ঠিকানা দিন। কৃষকের ঠিকানা এবং প্রবাসীর প্রতিষ্ঠানের নাম/ঠিকানা বর্ণনায় থাকবে না। গৃহিণীর ক্ষেত্রে কে টাকা দেন, আয়ের উৎস ও কীভাবে ব্যবহার করেন লিখুন। AI-এর লেখা যাচাই করে প্রয়োজনে edit করুন।</p>
       {value.polishedDescription && (
         <div className="polishedText">
           <small>PDF-এ এই লেখা বসবে</small>
@@ -2837,11 +2840,17 @@ function AdminAiPhotoControls({ source, filename, onSave }) {
 }
 
 function AdminCaseModal({ data, close, reload }) {
-  const [caseData,setCaseData]=useState(data.customer.case),[fields,setFields]=useState([]), c=data.customer;
+  const [caseData,setCaseDataRaw]=useState(data.customer.case),[fields,setFields]=useState([]), c=data.customer;
+  const [editHistory,setEditHistory]=useState(data.customer.case.aiReview?.history||[]);
+  function setCaseData(value,origin='Admin edit'){
+    setCaseDataRaw(current=>{const next=typeof value==='function'?value(current):value;const changed=reviewFields(current).filter(f=>readPath(current,f.path)!==readPath(next,f.path)).map(f=>f.path);
+      return changed.length?{...next,ekyc:{...next.ekyc,confirmed:false},aiReview:{...next.aiReview,changeOrigin:origin,locks:(next.aiReview?.locks||[]).filter(p=>!changed.includes(p))}}:next;
+    });
+  }
   const revision = useRef(c.revision);
   const autoSave = useAutosave({session:c.id,value:caseData,validate:contactValidationError,write:async value=>{
     const r=await fetch('/api/admin/customers/'+c.id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({case:value,revision:revision.current})});
-    const result=await readJson(r);if(!r.ok)throw new Error(result.error||'Save হয়নি');revision.current=result.revision;
+    const result=await readJson(r);if(!r.ok)throw new Error(result.error||'Save হয়নি');revision.current=result.revision;setEditHistory(result.history||[]);
   }});
   const closeSaved = async () => { if(await autoSave.flush()){close();reload();} };
   useEffect(()=>{window.documentStudioModalGoBack=closeSaved;return()=>{delete window.documentStudioModalGoBack;};},[caseData]);
@@ -2851,7 +2860,7 @@ function AdminCaseModal({ data, close, reload }) {
   const options=[["people.0.idFront","Applicant NID Front"],["people.0.idBack","Applicant NID Back"],["people.0.photo","Applicant Photo"],["people.0.nid","Applicant NID Number"],["people.0.addressBn","Applicant Address"],["people.1.idFront","Nominee NID Front"],["people.1.idBack","Nominee NID Back"],["people.1.photo","Nominee Photo"],["people.1.birthCertificate","Nominee Birth Certificate"],["people.1.nid","Nominee ID Number"],["declaration.rawDescription","Income details"],["declaration.monthlyIncome","Monthly income"]];
   const updatePerson=(i,key,value)=>setCaseData({...caseData,people:caseData.people.map((p,n)=>n===i?{...p,[key]:value}:p)});
   async function recollect(){if(!(await autoSave.flush()))return;const note=prompt('Worker-কে কী আবার সংগ্রহ করতে হবে লিখুন');if(!note||!fields.length)return alert('Field নির্বাচন ও নির্দেশনা দিন');const r=await fetch('/api/admin/customers/'+c.id+'/review',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'correction',note,fields})}),x=await readJson(r);if(!r.ok)return alert(x.error);alert('Worker-এর কাছে Recollection পাঠানো হয়েছে');close();reload();}
-return <div className="modalBackdrop adminPreviewBackdrop" onMouseDown={closeSaved}><section className="adminCaseModal" onMouseDown={e=>e.stopPropagation()}><button className="modalClose" onClick={closeSaved}><X/></button><div className="adminCaseHead"><div><small>FULL APPLICATION REVIEW</small><h1>{c.serial} — {caseData.name}</h1><p><b>TW:</b> {c.worker_name||c.created_by} • {c.worker_phone||'—'} • {c.created_by}</p></div><span className={'statusTag '+c.workflow_status}>{statusLabel[c.workflow_status]||c.workflow_status}</span></div><div className="adminReviewGrid"><div><AutoSaveStatus save={autoSave}/><AdminPersonalInfo caseData={caseData} onChange={setCaseData} />{(caseData.people||[]).map((p,i)=><section className="reviewPerson" key={p.id||i}><h2>{i?'Nominee':'Applicant'}</h2><div className="reviewFields">{[["name","Name"],["nameBn","নাম"],["relationship","Applicant-এর সাথে সম্পর্ক"],["nid","NID / ID"],["dob","DOB"],["fatherNameEn","Father"],["motherNameEn","Mother"],["addressEn","Address English"],["addressBn","ঠিকানা"],["profession","Profession"]].map(([key,label])=><label key={key}><span>{label}</span><input value={p[key]||''} onChange={e=>updatePerson(i,key,e.target.value)}/></label>)}</div><AdminAiPhotoControls source={p.photo} filename={personBase(p)} onSave={image=>saveAiPhoto(i,image)} /><AdminReviewMedia person={p} label={i?'Nominee ID Card':'Applicant ID Card'} /></section>)}<DeclarationForm value={caseData.declaration||{}} change={declaration=>setCaseData({...caseData,declaration})} applicant={caseData.people?.[0]} signature={caseData.docs?.find(d=>d.kind==='signature')?.pages?.[0]}/><section className="reviewPerson"><h2>Signature ও Additional Documents</h2><details className="reviewMedia"><summary>Signature ও document files দেখুন</summary><div className="adminImageGrid">{(caseData.docs||[]).flatMap(d=>(d.pages||[]).map((src,i)=><PreviewImage key={(d.id||d.name)+i} src={src} label={(d.name||d.kind)+' '+(i+1)}/>))}</div></details></section></div><aside className="recollectionSelector"><h3>Recollection নির্বাচন</h3><p>শুধু নির্বাচিত item Worker আবার খুলতে পারবে।</p>{options.map(([value,label])=><label key={value}><input type="checkbox" checked={fields.includes(value)} onChange={e=>setFields(e.target.checked?[...fields,value]:fields.filter(v=>v!==value))}/><span>{label}</span></label>)}<button className="secondary full" onClick={recollect}><RefreshCw/> Recollection পাঠান</button><AutoSaveStatus save={autoSave}/><a className="recordDownload" href={'/api/customers/'+c.id+'/download'}><Download/> Full ZIP Download</a></aside></div></section></div>;
+return <div className="modalBackdrop adminPreviewBackdrop" onMouseDown={closeSaved}><section className="adminCaseModal" onMouseDown={e=>e.stopPropagation()}><button className="modalClose" onClick={closeSaved}><X/></button><div className="adminCaseHead"><div><small>FULL APPLICATION REVIEW</small><h1>{c.serial} — {caseData.name}</h1><p><b>TW:</b> {c.worker_name||c.created_by} • {c.worker_phone||'—'} • {c.created_by}</p></div><span className={'statusTag '+c.workflow_status}>{statusLabel[c.workflow_status]||c.workflow_status}</span></div><AdminAiReview key={c.id} caseData={caseData} onChange={setCaseData} customerId={c.id} flush={autoSave.flush} getRevision={()=>revision.current} history={editHistory}/><div className="adminReviewGrid"><div><AutoSaveStatus save={autoSave}/><AdminPersonalInfo caseData={caseData} onChange={setCaseData} />{(caseData.people||[]).map((p,i)=><section className="reviewPerson" key={p.id||i}><h2>{i?'Nominee':'Applicant'}</h2><div className="reviewFields">{[["name","Name"],["nameBn","নাম"],["relationship","Applicant-এর সাথে সম্পর্ক"],["nid","NID / ID"],["dob","DOB"],["fatherNameEn","Father"],["motherNameEn","Mother"],["addressEn","Address English"],["addressBn","ঠিকানা"],["profession","Profession"]].map(([key,label])=><label key={key}><span>{label}</span><input value={p[key]||''} onChange={e=>updatePerson(i,key,e.target.value)}/></label>)}</div><AdminAiPhotoControls source={p.photo} filename={personBase(p)} onSave={image=>saveAiPhoto(i,image)} /><AdminReviewMedia person={p} label={i?'Nominee ID Card':'Applicant ID Card'} /></section>)}<DeclarationForm value={caseData.declaration||{}} change={declaration=>setCaseData({...caseData,declaration})} applicant={caseData.people?.[0]} signature={caseData.docs?.find(d=>d.kind==='signature')?.pages?.[0]}/><section className="reviewPerson"><h2>Signature ও Additional Documents</h2><details className="reviewMedia"><summary>Signature ও document files দেখুন</summary><div className="adminImageGrid">{(caseData.docs||[]).flatMap(d=>(d.pages||[]).map((src,i)=><PreviewImage key={(d.id||d.name)+i} src={src} label={(d.name||d.kind)+' '+(i+1)}/>))}</div></details></section></div><aside className="recollectionSelector"><h3>Recollection নির্বাচন</h3><p>শুধু নির্বাচিত item Worker আবার খুলতে পারবে।</p>{options.map(([value,label])=><label key={value}><input type="checkbox" checked={fields.includes(value)} onChange={e=>setFields(e.target.checked?[...fields,value]:fields.filter(v=>v!==value))}/><span>{label}</span></label>)}<button className="secondary full" onClick={recollect}><RefreshCw/> Recollection পাঠান</button><AutoSaveStatus save={autoSave}/><a className="recordDownload" href={'/api/customers/'+c.id+'/download'}><Download/> Full ZIP Download</a></aside></div></section></div>;
 }
 
 function AdminPortal({ openRecords, actions, master }) {
@@ -2958,12 +2967,20 @@ function App() {
     [showSettings, setShowSettings] = useState(false);
   const [draftReady, setDraftReady] = useState(false);
   const [editSession,setEditSession] = useState(null);
+  const [fileHistory,setFileHistory] = useState([]);
   const [extraCase,setExtraCase] = useState({});
   const editRevision = useRef(null);
-  const editedCase = useMemo(()=>({...extraCase,name,details,people,docs,declaration,photoPrintLayout,customerConsent}),[extraCase,name,details,people,docs,declaration,photoPrintLayout,customerConsent]);
+  const editedCase = useMemo(()=>{
+    const next={...extraCase,name,details,people,docs,declaration,photoPrintLayout,customerConsent};
+    const changed=reviewFields(next).filter(f=>readPath(extraCase,f.path)!==readPath(next,f.path)).map(f=>f.path);
+    return changed.length?{...next,ekyc:{...next.ekyc,confirmed:false},aiReview:{...next.aiReview,changeOrigin:'Admin edit',locks:(next.aiReview?.locks||[]).filter(p=>!changed.includes(p))}}:next;
+  },[extraCase,name,details,people,docs,declaration,photoPrintLayout,customerConsent]);
+  function applyEditorReview(next,origin='Admin edit'){
+    setExtraCase({...next,aiReview:{...next.aiReview,changeOrigin:origin}});setName(next.name);setDetails(next.details||{});setPeople(next.people||[]);
+  }
   const fileAutoSave = useAutosave({session:editSession,value:editedCase,validate:value=>!value.name?.trim()?'Customer নাম লিখুন':contactValidationError(value),write:async value=>{
     const response=await fetch(`/api/admin/customers/${editingCustomerId}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({case:value,revision:editRevision.current})});
-    const result=await readJson(response);if(!response.ok)throw new Error(result.error||'Save হয়নি');editRevision.current=result.revision;
+    const result=await readJson(response);if(!response.ok)throw new Error(result.error||'Save হয়নি');editRevision.current=result.revision;setFileHistory(result.history||[]);
   }});
   const [confirmClear,setConfirmClear] = useState(false);
   const draftOwner = useRef(null);
@@ -3185,6 +3202,7 @@ function App() {
     if(!(await fileAutoSave.flush()))return;
     editRevision.current=revision;
     setExtraCase(caseData);
+    setFileHistory(caseData.aiReview?.history||[]);
     setEditSession(`${customerId}:${Date.now()}`);
     setName(caseData.name || "");
     setDetails(caseData.details || details);
@@ -3230,6 +3248,8 @@ function App() {
       {hasAdminAccess(auth) && <ApiSettings open={showSettings} onClose={() => setShowSettings(false)} />}
       <div className="appPageContents">
         {editSession!==null && <AutoSaveStatus save={fileAutoSave}/>}
+        {editSession!==null && [2,3].includes(step) && <AdminAiReview key={editSession} caseData={editedCase} onChange={applyEditorReview} customerId={editingCustomerId} flush={fileAutoSave.flush} getRevision={()=>editRevision.current} history={fileHistory}/>}
+        {editSession!==null && [2,3].includes(step) && <AdminPersonalInfo caseData={editedCase} onChange={applyEditorReview}/>}
         {step === 0 ? (
           <WorkerDashboard startNew={() => setStep(1)} actions={actions} />
         ) : step === 6 ? (

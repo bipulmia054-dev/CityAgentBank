@@ -28,6 +28,7 @@ class EkycRoundTripTest(CustomerAssetsTest):
         status,body=self.request('/api/customers/1/extension')
         self.assertEqual(status,200,body)
         saved=json.loads(body)['case']
+        saved.pop('aiReview',None)
         self.assertEqual(saved,case)
         self.assertEqual(self.request('/api/admin/customers/1',{'case':case},user='worker',method='PUT')[0],403)
         self.assertEqual(self.request('/api/customers/1/extension',user='worker')[0],403)

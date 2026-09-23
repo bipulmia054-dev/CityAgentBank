@@ -1,5 +1,6 @@
 ﻿import base64, hashlib, hmac, json, re, secrets
 from datetime import datetime, timezone
+import ekyc_ai
 from pathlib import Path
 
 
@@ -592,6 +593,24 @@ def dispatch(handler, method, path, db, data_dir, digest):
                 images[key]=f"data:{mime};base64,"+base64.b64encode(p.read_bytes()).decode()
         return handler.reply(200,{"worker":{**dict(row),"password_hash":"","salt":"","registration_json":"","images":images}})
 
+    ai_match = re.fullmatch(r"/api/admin/customers/(\d+)/ai-prepare", path)
+    if ai_match and method == 'POST':
+        try:
+            data=handler.body(16384); customer_id=int(ai_match.group(1))
+            with db() as con:
+                row=con.execute('SELECT case_json,revision FROM customers WHERE id=?',(customer_id,)).fetchone()
+                setting=con.execute("SELECT value FROM settings WHERE key='gemini_api_key'").fetchone()
+                income=con.execute("SELECT content FROM customer_assets WHERE customer_id=? AND kind='declaration_card'",(customer_id,)).fetchone()
+            if not row:return handler.reply(404,{'error':'Customer পাওয়া যায়নি'})
+            if data.get('revision')!=row['revision']:return handler.reply(409,{'error':'ফাইল বদলেছে। আবার খুলে AI Process করুন।'})
+            if not setting or not setting['value']:return handler.reply(400,{'error':'Admin AI Settings-এ Gemini key দিন।'})
+            result=ekyc_ai.prepare_customer(customer_id,json.loads(row['case_json'] or '{}'),setting['value'],data.get('mode','all'),income['content'] if income else None)
+            with db() as con: current=con.execute('SELECT revision FROM customers WHERE id=?',(customer_id,)).fetchone()
+            if not current or current['revision']!=row['revision']:return handler.reply(409,{'error':'Processing-এর সময় ফাইল বদলেছে। আবার Process করুন।'})
+            return handler.reply(200,{**result,'revision':row['revision']})
+        except Exception:
+            return handler.reply(400,{'error':'AI processing হয়নি। ছবি, API configuration ও সংযোগ পরীক্ষা করে Retry করুন; customer তথ্য বদলানো হয়নি।'})
+
     match = re.fullmatch(r"/api/admin/customers/(\d+)", path)
     if match and method == "GET":
         with db() as con:
@@ -608,9 +627,11 @@ def dispatch(handler, method, path, db, data_dir, digest):
             people=case.get("people") or [{}]; applicant=people[0]
             with db() as con:
                 con.execute("BEGIN IMMEDIATE")
-                current=con.execute("SELECT revision FROM customers WHERE id=?",(int(match.group(1)),)).fetchone()
+                current=con.execute("SELECT revision,case_json FROM customers WHERE id=?",(int(match.group(1)),)).fetchone()
                 if current and 'revision' in data and data['revision'] != current['revision']:
                     return handler.reply(409,{"error":"ফাইল পরিবর্তিত হয়েছে। আবার খুলে চেষ্টা করুন।"})
+                if current:
+                    case=ekyc_ai.record_history(json.loads(current['case_json'] or '{}'),case,user['username'],now())
                 result=con.execute("""UPDATE customers SET case_json=?,name=?,name_bn=?,customer_number=?,phone=?,email=?,revision=revision+1,
                     reviewed_by=?,reviewed_at=? WHERE id=?""",(json.dumps(case,ensure_ascii=False),str(case.get("name","")).upper(),
                     str((case.get("details") or {}).get("nameBn","")),str(applicant.get("nid","")),
@@ -618,7 +639,7 @@ def dispatch(handler, method, path, db, data_dir, digest):
                     user["username"],now(),int(match.group(1))))
                 if not result.rowcount:raise ValueError("Customer পাওয়া যায়নি")
                 audit(con,user["username"],"admin_case_edited","customer",match.group(1))
-            return handler.reply(200,{"ok":True,"revision":current['revision']+1})
+            return handler.reply(200,{"ok":True,"revision":current['revision']+1,"history":case.get('aiReview',{}).get('history',[])})
         except Exception as error:return handler.reply(400,{"error":str(error)})
 
     match = re.fullmatch(r"/api/admin/users/(\d+)", path)

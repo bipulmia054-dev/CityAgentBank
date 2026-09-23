@@ -24,11 +24,11 @@ def extension():
         shutil.copy2(OUT/new, ROOT/'public'/new)
 
 def server():
-    names=['local_server.py','worker_system.py','customer_archive.py','customer_assets.py','migrate_storage.py','requirements.txt','Dockerfile','compose.yaml','.dockerignore','SERVER-UPLOAD-BN.md']
+    names=['local_server.py','worker_system.py','ekyc_ai.py','ekyc_ai_schema.json','customer_archive.py','customer_assets.py','migrate_storage.py','requirements.txt','Dockerfile','compose.yaml','.dockerignore','SERVER-UPLOAD-BN.md']
     files=[(ROOT/name,name) for name in names]
     files += [(p,p.relative_to(ROOT).as_posix()) for p in (ROOT/'dist/client').rglob('*') if p.is_file()]
     zip_files(OUT/'Document-Studio-Server-Upload.zip',files)
-    source_names=names+['package.json','package-lock.json','vite.config.js','vite.extension.config.js','index.html','worker.js','test_customer_assets.py','package_release.py']
+    source_names=names+['package.json','package-lock.json','vite.config.js','vite.extension.config.js','index.html','worker.js','test_customer_assets.py','test_ekyc_ai.py','test_ekyc_roundtrip.py','test_income_description.py','AI-EKYC-ADMIN-BN.md','package_release.py']
     source=[(ROOT/name,name) for name in source_names]
     for folder in ['src','public','chrome-extension','android']:
         for path in (ROOT/folder).rglob('*'):
