@@ -26,19 +26,19 @@ export default function AdminEkycFields({caseData,onChange}) {
       {select('profession','Bank Profession',professions)}{select('sector','Sector Code',sectors)}
       {field('monthlyIncome','Declared Monthly Income (BDT)','number')}{field('issuePlace','NID Issue Place (English bank district label)')}
     </div></details>
-    <details className="ekycSection"><summary>২ · Present & Permanent Address</summary><h3>Present Address (English)</h3><div className="reviewFields">
+    <details className="ekycSection" open><summary>২ · Present & Permanent Address</summary><h3>Present Address (English)</h3><div className="reviewFields">
       {field('division','Division')}{field('district','District')}{field('thana','Upazila / Thana')}
       {field('postalCode','Postal Code')}{field('addressLine1','Address Line 1 — Village / Union')}{field('addressLine2','Address Line 2 — Thana / District')}
       {select('sameAddress','Permanent Address same as Present?',['Yes','No'])}
     </div>
     {e.sameAddress==='No' && <><h3>Permanent Address</h3><div className="reviewFields">{['division','district','thana','postalCode','addressLine1','addressLine2'].map(key=>field('permanent_'+key,key))}</div></>}
     </details>
-    {(caseData.people||[]).slice(1).map((p,i)=><details className="ekycSection" key={p.id || i}><summary>৩ · Nominee {i+1} — Relation & Address</summary><div className="reviewFields">
+    {(caseData.people||[]).slice(1).map((p,i)=><details className="ekycSection" open key={p.id || i}><summary>৩ · Nominee {i+1} — Relation & Address</summary><div className="reviewFields">
       <Choice label="Applicant-এর কাছে Nominee কে হন" value={p.relationship} options={relations} onChange={v=>nominee(i+1,'relationship',v)}/>
       <Text label="Nominee Address Line 1 (English)" value={p.ekycAddressLine1} onChange={v=>nominee(i+1,'ekycAddressLine1',v)}/>
       <Text label="Nominee Address Line 2 (English)" value={p.ekycAddressLine2} onChange={v=>nominee(i+1,'ekycAddressLine2',v)}/>
     </div></details>)}
-    <details className="ekycSection"><summary>৪ · Risk Grading — গ্রাহকভিত্তিক যাচাই</summary>
+    <details className="ekycSection" open><summary>৪ · Risk Grading</summary>
     <p>বার্ষিক লেনদেন মাসিক আয় নয়। PEP/IP ও source of funds সবার জন্য একই ধরে নেওয়া হবে না। Business / multiple nominee-এর unmapped অংশ manually পূরণ করুন।</p>
     <div className="reviewFields">
       {select('onboarding','Type of Onboarding',onboarding)}{select('residence','Client residence',residence)}
