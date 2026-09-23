@@ -14,6 +14,10 @@ test('no invented risk defaults or nominee relations',()=>{
   assert.equal(p.steps['Nominee uploads'].find(a=>a.label==='Nominee relation').value,'');
   assert.equal(relations.length,27);assert.equal(new Set(relations).size,27);
 });
+test('saved risk answers work without a separate verification checkbox; absent answers stay absent',()=>{
+  const p=makePlan({people:[{}],ekyc:{pep:'No',sourceCredible:'YES(Risk-1)',confirmed:false}});
+  assert.deepEqual(p.steps['Risk Grading'].map(a=>[a.label,a.value]),[['PEP','No'],['Credible source of funds','YES(Risk-1)']]);
+});
 test('multiple nominees stop; single spouse does not autofill; correct docs targeted',()=>{
   const p=makePlan({people:[{nid:'123'},{},{}],ekyc:{maritalStatus:'SINGLE',spouseName:'OLD'}});
   assert.deepEqual(p.steps['Nominee Information'],[]);

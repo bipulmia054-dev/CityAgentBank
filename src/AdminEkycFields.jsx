@@ -48,7 +48,7 @@ export default function AdminEkycFields({caseData,onChange}) {
       {select('product','Type of Product',products)}{select('occupation','Profession Risk Occupation',occupationLabels)}
       {select('transactions','Average Yearly Transactions',transactions)}{select('sourceCredible','Verified credible Source of Funds?',['YES(Risk-1)','NO(Risk-5)'])}
     </div>
-    <label><input type="checkbox" checked={e.confirmed===true} onChange={ev=>onChange({...caseData,ekyc:{...e,confirmed:ev.target.checked}})}/> এই customer-এর eKYC ও risk প্রশ্নের উত্তর যাচাই করেছি।</label>
+    <p>এখানে customer-এর সঠিক উত্তর লিখলেই Auto-save হবে। আলাদা confirmation checkbox লাগবে না। অজানা উত্তর খালি রাখুন।</p>
     </details>
   </section>;
 }

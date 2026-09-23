@@ -44,7 +44,6 @@ export function remainingItems(data,assets={}){
   if(data.ekyc?.maritalStatus==='MARRIED')check('ekyc.spouseName','Spouse Name');
   if(data.ekyc?.sameAddress==='No')for(const k of ['division','district','thana','postalCode','addressLine1'])check(`ekyc.permanent_${k}`,`Permanent: ${k}`);
   for(const f of reviewFields(data)){const v=readPath(data,f.path);if(v&&f.options&&!f.options.includes(v))missing.push(`${f.label}: dropdown-এর সঙ্গে মিল নেই`);}
-  if(data.ekyc?.confirmed!==true)missing.push('Customer-এর eKYC ও Risk উত্তর Admin confirmation বাকি');
   if(data.ekyc?.monthlyIncome&&(!Number.isFinite(Number(data.ekyc.monthlyIncome))||Number(data.ekyc.monthlyIncome)<=0))missing.push('Monthly Income সঠিক নয়');
   if(data.ekyc?.postalCode&&!/^\d{4}$/.test(data.ekyc.postalCode))missing.push('Postal Code চারটি English digit হতে হবে');
   if(data.people?.[0]?.issueDate&&!dateText(data.people[0].issueDate))missing.push('NID Issue Date সঠিক নয়');

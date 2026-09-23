@@ -17,6 +17,12 @@ test('AI apply skips locks, human declarations, unknown fields and stale values'
   assert.equal(data.people[0].name,'OLD');
 });
 test('AI proposal is never applied without selection',()=>{const c=sample();assert.equal(applyProposals(c,[{path:'people.0.name',before:'OLD',value:'NEW'}],[]),c);});
+test('one-click mode applies every eligible returned value, still preserving locks and unknown risk answers',()=>{
+  const c=sample();const proposals=[{path:'people.0.name',before:'OLD',value:'AUTO NAME'},{path:'people.1.ekycAddressLine1',before:'',value:'TEST ADDRESS'},{path:'ekyc.pep',before:'',value:'No'}];
+  const next=applyProposals(c,proposals,proposals.map(p=>p.path));
+  assert.equal(next.name,'AUTO NAME');assert.equal(next.people[1].ekycAddressLine1,'TEST ADDRESS');assert.equal(next.ekyc.pep,undefined);
+  assert.ok(!remainingItems(next).some(v=>v.includes('confirmation')));
+});
 test('undo protects locks and later edits, clears confirmation',()=>{
   const c=sample();const next=undoChanges(c,{changes:[{path:'people.0.name',before:'PREVIOUS',after:'OLD'},{path:'people.0.nid',before:'9999999999',after:'0123456789'},{path:'people.1.name',before:'WRONG',after:'STALE'}]});
   assert.equal(next.name,'PREVIOUS');assert.equal(next.people[0].nid,c.people[0].nid);assert.equal(next.people[1].name,'NOMINEE');assert.equal(next.ekyc.confirmed,false);
