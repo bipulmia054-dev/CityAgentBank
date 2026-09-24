@@ -62,7 +62,14 @@ def normalize(field, value):
     if key == 'monthlyIncome' and not re.fullmatch(r'[1-9]\d*(?:\.\d{1,2})?',value): return ''
     if key == 'postalCode' and not re.fullmatch(r'\d{4}',value): return ''
     if key == 'email' and not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+',value): return ''
-    if field.get('options') and value not in field['options']: return ''
+    if field.get('options'):
+        # Match harmless case/spacing/punctuation variations, never fuzzy guesses.
+        token=lambda text: re.sub(r'[\s.()/\-]+','',text).casefold()
+        aliases={'gender':{'male':'M','female':'F'},'education':{'hsc':'H.S.C','ssc':'S.S.C'}}
+        value=aliases.get(key,{}).get(value.casefold(),value)
+        matches=[option for option in field['options'] if token(option)==token(value)]
+        if len(matches)!=1:return ''
+        value=matches[0]
     if not field.get('options') and key not in ('nameBn','email','nid','dob','issueDate','monthlyIncome','postalCode'):
         if re.search('[\u0980-\u09ff]',value): return ''
         value = value.upper()
@@ -98,9 +105,15 @@ def prepare(case, api_key, mode='all', income_image=None):
             parts.extend([{'text':f'Image source: {source}. Only person index {index}.'}, {'inlineData':{'mimeType':match[1],'data':match[2]}}])
     known = {p:get_value(case,p) for p in allowed if get_value(case,p) != ''}
     for index,_ in enumerate(case.get('people') or []):
-        for key in ('profession','addressBn','fatherNameBn','motherNameBn'):
+        for key in ('profession','addressBn','fatherNameBn','motherNameBn','email','religion','education','maritalStatus','spouseName'):
             path=f'people.{index}.{key}'
             if get_value(case,path):known[path]=get_value(case,path)
+    # Older records may hold explicit eKYC answers under details or declaration.
+    for field in SCHEMA:
+        if field['scope']!='ekyc':continue
+        for prefix in ('details','declaration'):
+            path=f'{prefix}.{field["key"]}'
+            if get_value(case,path)!='':known[path]=get_value(case,path)
     if get_value(case,'declaration.monthlyIncome'):
         known['declaration.monthlyIncome']=get_value(case,'declaration.monthlyIncome')
     raw_description = str((case.get('declaration') or {}).get('rawDescription') or '')[:6000]
@@ -117,10 +130,11 @@ Do not guess any digit, unclear word, missing value, religion, education, marita
 Identity values must cite that person's readable NID image; never transfer an applicant's values to a nominee.
 Use English CAPITALS except Bengali name and email. Dates DD/MM/YYYY, preserve leading zeros in NID.
 For addresses, transliterate only what is legible; do not invent division/district/postcode, assume MEHERPUR/KHULNA, or assume present=permanent.
-NID address may be proposed for full address. Do NOT assign NID address as PRESENT address unless saved customer data explicitly confirms it as present.
+The operator requests NID address as the initial editable address. Split that person's legible NID/saved address into division, district, thana, postcode, addressLine1 (village/union) and addressLine2 (thana/district), including permanent address fields. Do not invent missing components. Use separately documented present address in preference to NID. This is editable prefilling, not verification that present equals permanent.
 Profession/sector/occupation can be proposed only from explicit work description, using exact allowed options. Sales employee is not shop owner.
 Education, religion, relationships, monthly income must be explicitly documented, not inferred. Remittance received by housewife is not her salary.
-Never derive annual transactions from monthly income. Never answer PEP/IP, source credibility, residence, onboarding, product, same-address declarations.
+Never derive annual transactions from monthly income. Fields marked explicitOnly (PEP/IP, source credibility, residence, onboarding, product, same-address, transactions) can ONLY copy an already saved answer from a source with the same final field key. Never infer these answers from images, occupation, names or narrative.
+Fill ALL supported available personal, nominee, address and profession fields, not just identity fields. For each dropdown choose its exact supplied option. Do not omit an explicit saved education/religion/gender/relationship because an image does not contain it.
 If saved values conflict with images, propose the readable image value with evidence, ADMIN decides. No fabricated evidence.
 Report blur, cropped edges, glare, or illegible text per image. Omit uncertain fields, list what needs a clearer image or confirmation in Bengali.
 Return JSON ONLY: {"proposals":[{"path":"allowed path","value":"value","source":"exact source path","evidence":"brief verbatim supporting text","certainty":"clear"}],"issues":["Bengali issue"],"quality":[{"source":"image source","status":"readable|unclear|missing","reason":"Bengali reason"}]}.
@@ -149,8 +163,10 @@ Only propose paths in ALLOWED. Only sources in SOURCES. Do not copy example valu
         if not field or path in seen or item.get('certainty')!='clear' or source not in sources or source in unreadable: continue
         if path.startswith('people.') and source.startswith('people.') and path.split('.')[1]!=source.split('.')[1]: continue
         if (path.startswith('ekyc.') or path=='details.email') and source.startswith('people.') and source.split('.')[1]!='0': continue
-        if field['scope']=='person' and field['key'] in identity and source not in readable: continue
+        if field['scope']=='person' and field['key'] in identity and source not in readable:
+            if source!=path or normalize(field,str(known.get(source,'')))!=normalize(field,item.get('value')):continue
         value=normalize(field,item.get('value'));evidence=str(item.get('evidence') or '').strip()[:500]
+        if field.get('explicitOnly') and (source.split('.')[-1]!=field['key'] or value!=normalize(field,str(known.get(source,'')))):continue
         if not value or not evidence or value==str(get_value(case,path)): continue
         seen.add(path);proposals.append({'path':path,'value':value,'before':get_value(case,path),'source':source,'evidence':evidence})
     return {'proposals':proposals,'issues':[str(x)[:300] for x in output.get('issues',[]) if isinstance(x,str)][:40], 'quality':quality}

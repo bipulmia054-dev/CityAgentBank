@@ -1,5 +1,6 @@
 import schema from '../ekyc_ai_schema.json' with {type:'json'};
 import {dateText} from '../chrome-extension/autofill-model.mjs';
+import {professions,occupationLabels} from './ekyc-options.js';
 export const readPath=(value,path)=>path.split('.').reduce((v,k)=>v?.[k],value)??'';
 export function reviewFields(data){
   return schema.flatMap(f=>f.scope==='person'?(data.people||[]).flatMap((p,i)=>i===0&&['relationship','ekycAddressLine1','ekycAddressLine2'].includes(f.key)?[]:[{...f,path:`people.${i}.${f.key}`,label:`${i?`Nominee ${i}`:'Applicant'} · ${f.label}`}]):[{...f,path:`${f.scope}.${f.key}`,label:f.label.replace(/_/g,' ').replace(/([a-z])([A-Z])/g,'$1 $2').replace(/^./,c=>c.toUpperCase())}]);
@@ -9,10 +10,44 @@ export function writePath(data,path,value){
   const write=(current,index)=>{const key=keys[index];const copy=Array.isArray(current)?[...current]:{...current};copy[key]=index===keys.length-1?value:write(current?.[key],index+1);return copy;};
   return write(data,0);
 }
+const optionToken=value=>String(value??'').replace(/[\s.()/\-]+/g,'').toLowerCase();
+export function fillKnownFields(data){
+  let next=data;const locks=new Set(data.aiReview?.locks||[]);
+  const put=(path,value)=>{if(value!==''&&value!=null&&!locks.has(path))next=writePath(next,path,value);};
+  for(const f of reviewFields(data)){
+    const current=readPath(data,f.path);
+    const candidates=current?[current]:f.scope==='ekyc'?[readPath(data,`people.0.${f.key}`),readPath(data,`details.${f.key}`),readPath(data,`declaration.${f.key}`)]:[];
+    if(f.path==='ekyc.issuePlace'&&!current)candidates.push(readPath(data,'people.0.issuePlaceEn'));
+    if(f.path==='details.email'&&!current)candidates.push(readPath(data,'people.0.email'));
+    for(let value of candidates){
+      if(value===''||value==null)continue;
+      if(f.key==='gender')value=({male:'M',female:'F'})[String(value).toLowerCase()]||value;
+      if(f.options){const matches=f.options.filter(v=>optionToken(v)===optionToken(value));if(matches.length!==1)continue;value=matches[0];}
+      if(f.key==='monthlyIncome'){value=String(value).replace(/[০-৯]/g,c=>String('০১২৩৪৫৬৭৮৯'.indexOf(c))).replace(/,/g,'');if(!/^[1-9]\d*(\.\d{1,2})?$/.test(value))continue;}
+      if(String(current)!==String(value))put(f.path,value);
+      break;
+    }
+  }
+  // Exact known job labels only; narrative and ambiguous jobs are left to AI.
+  const job=String(data.people?.[0]?.profession||'').trim().toLowerCase();
+  const jobs=[
+    [['কৃষক','farmer','farmer/fishermen'],1,'FARMER',17],
+    [['গৃহিণী','গৃহিনী','housewife','homemaker'],0,'HOUSEWIFE',5],
+    [['ছাত্র','ছাত্রী','student'],10,null,15],
+    [['অবসরপ্রাপ্ত','retired','retired persons'],8,'RETIRED',16],
+    [['salesman','sales man','সেলসম্যান','সেলস ম্যান'],5,'SALARY/SERVICE HOLDER',13],
+  ];
+  const match=jobs.find(([names])=>names.includes(job));
+  if(match){for(const [key,value] of [['profession',professions[match[1]]],['sector',match[2]],['occupation',occupationLabels[match[3]]]]){
+    if(!readPath(next,`ekyc.${key}`)&&value)put(`ekyc.${key}`,value);
+  }}
+  return next===data?data:{...next,ekyc:{...next.ekyc,confirmed:false}};
+}
 export function applyProposals(data,proposals,selected){
   let next=data;const fields=new Map(reviewFields(data).map(f=>[f.path,f]));const locks=new Set(data.aiReview?.locks||[]);
   for(const p of proposals){
     const f=fields.get(p.path);
+    if(f?.explicitOnly&&(p.source?.split('.').at(-1)!==f.key||String(readPath(data,p.source))!==String(p.value)))continue;
     if(!selected.includes(p.path)||!f||f.humanOnly||locks.has(p.path)||String(readPath(data,p.path))!==String(p.before??'')||!p.value||(f.options&&!f.options.includes(p.value)))continue;
     next=writePath(next,p.path,p.value);
     if(p.path==='people.0.name')next={...next,name:p.value};

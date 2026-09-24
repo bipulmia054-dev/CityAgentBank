@@ -1,6 +1,7 @@
 import React,{useEffect,useRef,useState} from 'react';
+import {flushSync} from 'react-dom';
 import {readJson} from './api-response.js';
-import {applyProposals} from './ekyc-review.js';
+import {applyProposals,fillKnownFields} from './ekyc-review.js';
 
 export default function AdminAiReview({caseData,onChange,customerId,flush,getRevision}){
   const [busy,setBusy]=useState(false),[message,setMessage]=useState('');
@@ -11,6 +12,8 @@ export default function AdminAiReview({caseData,onChange,customerId,flush,getRev
     if(running.current)return;
     running.current=true;setBusy(true);setMessage('');
     try{
+      const known=fillKnownFields(latest.current);
+      if(known!==latest.current)flushSync(()=>onChange(known,'AI Apply'));
       if(!(await flush()))throw Error('আগের পরিবর্তন Save হয়নি। আগে Save error ঠিক করুন।');
       if(!mounted.current)return;
       const snapshot=latest.current,revision=getRevision();

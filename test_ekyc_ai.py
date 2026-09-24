@@ -28,6 +28,19 @@ class AiRulesTest(unittest.TestCase):
         for key,value in [('nid','123'),('dob','31/02/2000'),('monthlyIncome','-5'),('postalCode','12345')]:
             self.assertEqual(ekyc_ai.normalize({'key':key},value),'')
         self.assertEqual(ekyc_ai.normalize({'key':'nid'},'০১২৩৪৫৬৭৮৯'),'0123456789')
+        fields=ekyc_ai.fields({'people':[{}]})
+        self.assertEqual(ekyc_ai.normalize(fields['ekyc.education'],'HSC'),'H.S.C')
+        self.assertEqual(ekyc_ai.normalize(fields['ekyc.profession'],'HOUSEWIFE'),'Housewife')
+        self.assertEqual(ekyc_ai.normalize(fields['people.0.gender'],'Male'),'M')
+        self.assertEqual(ekyc_ai.normalize(fields['ekyc.religion'],'unknown'),'')
+
+    def test_all_sections_supported_without_inventing_risk(self):
+        case={'people':[{'education':'HSC','addressBn':'saved address'}], 'details':{'pep':'No'}}
+        def item(path,value,source):return {'path':path,'value':value,'source':source,'evidence':'saved answer','certainty':'clear'}
+        output={'proposals':[item('ekyc.education','HSC','people.0.education'),item('ekyc.permanent_district','MEHERPUR','people.0.addressBn'),item('ekyc.pep','No','details.pep'),item('ekyc.ip','No','details.pep'),item('ekyc.sourceCredible','YES(Risk-1)','declaration.rawDescription')],'quality':[]}
+        response=MagicMock();response.__enter__.return_value.read.return_value=json.dumps({'candidates':[{'content':{'parts':[{'text':json.dumps(output)}]}}]}).encode()
+        with patch('ekyc_ai.urllib.request.urlopen',return_value=response):result=ekyc_ai.prepare(case,'fake-key')
+        self.assertEqual({p['path'] for p in result['proposals']},{'ekyc.education','ekyc.permanent_district','ekyc.pep'})
 
     def test_suggestions_reject_risk_locks_unclear_cross_person_and_invalid(self):
         image=io.BytesIO();Image.new('RGB',(20,20),'white').save(image,format='JPEG');source='data:image/jpeg;base64,'+base64.b64encode(image.getvalue()).decode()

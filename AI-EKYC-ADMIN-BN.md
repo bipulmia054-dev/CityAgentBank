@@ -1,5 +1,7 @@
 # Admin AI eKYC Review
 
+Updated autofill: known personal/address values and explicit saved risk answers map into dropdowns immediately. Safe case/spacing differences are normalized. Exact known occupations map to profession/sector/occupation; AI handles supported remaining values. NID address is an editable starting address, not proof that present equals permanent. Unknown risk declarations are not invented. Married drafts save even if spouse name is not yet available.
+
 Admin Applications → A–Z Preview/Edit এবং Records → Full Editor-এ AI review panel আছে।
 
 1. পরিবর্তন Server-এ Saved হওয়া পর্যন্ত অপেক্ষা করুন।

@@ -1,7 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {applyProposals,undoChanges,remainingItems} from './ekyc-review.js';
+import {applyProposals,undoChanges,remainingItems,fillKnownFields} from './ekyc-review.js';
 const sample=()=>({name:'OLD',people:[{name:'OLD',nid:'0123456789'},{name:'NOMINEE'}],ekyc:{confirmed:true},aiReview:{locks:['people.0.nid']}});
+test('one click maps saved personal, address, explicit risk and profession values without AI',()=>{
+  const data={people:[{profession:'কৃষক',gender:'Male',religion:'Islam',education:'HSC',issuePlaceEn:'MEHERPUR'}],declaration:{monthlyIncome:'২০,০০০',district:'MEHERPUR',thana:'MEHERPUR SADAR'},details:{pep:'No'}};
+  const next=fillKnownFields(data);
+  assert.equal(next.people[0].gender,'M');assert.equal(next.ekyc.religion,'ISLAM');assert.equal(next.ekyc.education,'H.S.C');
+  assert.equal(next.ekyc.monthlyIncome,'20000');assert.equal(next.ekyc.district,'MEHERPUR');assert.equal(next.ekyc.pep,'No');
+  assert.equal(next.ekyc.profession,'Farmer/Fishermen');assert.equal(next.ekyc.sector,'FARMER');assert.match(next.ekyc.occupation,/Farmer/);
+  assert.equal(next.ekyc.sourceCredible,undefined);assert.equal(next.ekyc.transactions,undefined);assert.equal(data.ekyc,undefined);
+});
+test('known fill preserves manual values, locks and ambiguous jobs',()=>{
+  const data={people:[{profession:'employee',education:'HSC'}],ekyc:{religion:'HINDU'},aiReview:{locks:['ekyc.education']}};
+  const next=fillKnownFields(data);assert.equal(next.ekyc.education,undefined);assert.equal(next.ekyc.religion,'HINDU');assert.equal(next.ekyc.occupation,undefined);
+});
+test('explicit risk needs an existing matching source, permanent address may use extracted evidence',()=>{
+  const data={details:{pep:'No'},people:[{}]};const proposals=[{path:'ekyc.pep',source:'details.pep',value:'No',before:''},{path:'ekyc.sourceCredible',source:'details.pep',value:'YES(Risk-1)',before:''},{path:'ekyc.permanent_district',source:'people.0.idBack',value:'MEHERPUR',before:''}];
+  const next=applyProposals(data,proposals,proposals.map(p=>p.path));assert.equal(next.ekyc.pep,'No');assert.equal(next.ekyc.sourceCredible,undefined);assert.equal(next.ekyc.permanent_district,'MEHERPUR');
+});
 test('AI apply skips locks, human declarations, unknown fields and stale values',()=>{
   const data=sample();const proposals=[
     {path:'people.0.name',before:'OLD',value:'NEW'},

@@ -28,8 +28,8 @@ test('validation accepts blank and rejects invalid data', () => {
   assert.notEqual(contactValidationError({ details: { email: 'bad' } }), '');
   assert.notEqual(contactValidationError({ people: [{ gender: 'invalid' }] }), '');
 });
-test('married requires spouse; single does not; income must be positive', () => {
-  assert.notEqual(contactValidationError({ekyc:{maritalStatus:'MARRIED'}}),'');
+test('partial married draft saves without spouse; income must be positive', () => {
+  assert.equal(contactValidationError({ekyc:{maritalStatus:'MARRIED'}}),'');
   assert.equal(contactValidationError({ekyc:{maritalStatus:'MARRIED',spouseName:'TEST SPOUSE'}}),'');
   assert.equal(contactValidationError({ekyc:{maritalStatus:'SINGLE'}}),'');
   assert.notEqual(contactValidationError({ekyc:{monthlyIncome:'-1'}}),'');

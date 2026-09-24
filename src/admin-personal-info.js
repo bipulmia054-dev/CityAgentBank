@@ -23,7 +23,7 @@ export function contactValidationError(caseData) {
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return "সঠিক Email লিখুন অথবা খালি রাখুন।";
   if (gender && !["M", "F"].includes(gender)) return "Gender নির্বাচন করুন অথবা খালি রাখুন।";
   const e = caseData.ekyc || {};
-  if (e.maritalStatus === 'MARRIED' && !String(e.spouseName || '').trim()) return 'Married হলে Spouse Name লিখুন।';
+  // A partial draft must save even when the spouse name is still unknown.
   if (e.monthlyIncome && (!Number.isFinite(Number(e.monthlyIncome)) || Number(e.monthlyIncome) <= 0)) return 'Monthly Income শূন্যের বেশি সংখ্যা দিন।';
   return "";
 }
