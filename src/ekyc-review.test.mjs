@@ -3,6 +3,12 @@ import assert from 'node:assert/strict';
 import {applyProposals,undoChanges,remainingItems,fillKnownFields,lockReviewedFields,unlockReviewedFields} from './ekyc-review.js';
 import {workflowDefaults} from './ekyc-defaults.js';
 const sample=()=>({name:'OLD',people:[{name:'OLD',nid:'0123456789'},{name:'NOMINEE'}],ekyc:{confirmed:true},aiReview:{locks:['people.0.nid']}});
+test('applicant full address fills missing lines and postcode without OCR components',()=>{
+  const data={people:[{addressEn:'Chandbil, Amjhupi - 7101, Meherpur Sadar, Meherpur'}],ekyc:{thana:'MEHERPUR SADAR',district:'MEHERPUR'}};
+  const next=fillKnownFields(data);
+  assert.equal(next.ekyc.addressLine1,'CHANDBIL, AMJHUPI - 7101');assert.equal(next.ekyc.postalCode,'7101');assert.equal(next.ekyc.addressLine2,'MEHERPUR SADAR, MEHERPUR');
+  const manual=fillKnownFields({...data,ekyc:{...data.ekyc,addressLine1:'MANUAL ADDRESS',postalCode:'1234'}});assert.equal(manual.ekyc.addressLine1,'MANUAL ADDRESS');assert.equal(manual.ekyc.postalCode,'1234');
+});
 test('English address formatting keeps locality, postcode and documented name prefix',()=>{
   const data={people:[{name:'Mosa: Asma',nameBn:'মোছাঃ আসমা',village:'Chandbil',postOffice:'আমঝুপী',postCode:'৭১০১'},{village:'Other Village',postOffice:'Other Post',postCode:'1234',thana:'Other Thana',district:'Other District'}],ekyc:{district:'মেহেরপুর',thana:'মেহেরপুর সদর'}};
   const next=fillKnownFields(data);

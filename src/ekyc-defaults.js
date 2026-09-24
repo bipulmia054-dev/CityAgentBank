@@ -7,9 +7,20 @@ export function bankEnglish(value){
 }
 export function structuredAddress(person={}){
   const village=bankEnglish(person.village),postOffice=bankEnglish(person.postOffice);
-  const code=bankEnglish(person.postalCode||person.postCode);
+  let code=bankEnglish(person.postalCode||person.postCode);
   const thana=bankEnglish(person.thana),district=bankEnglish(person.district);
-  const line1=village&&(!person.postOffice||postOffice)?[village,postOffice].filter(Boolean).join(', ')+(code&&/^\d{4}$/.test(code)?' - '+code:''):'';
+  const full=bankEnglish(person.addressEn);
+  // Full-address-only records need a fallback as OCR component fields may be blank.
+  const parts=full.split(/[,\n]+/).map(v=>v.trim()).filter(Boolean);
+  const codes=[...full.matchAll(/(?:^|[,\s-])(\d{4})(?=\s*(?:,|$))/g)].map(m=>m[1]);
+  if(!code&&new Set(codes).size===1)code=codes[0];
+  const tail=[thana,district].filter(Boolean);
+  const local=parts.filter(part=>!tail.includes(part)&&part!==tail.join(' ')&&part!==code).map(part=>{
+    if(code&&part.endsWith(code))return part.slice(0,-code.length).replace(/[\s-]+$/,'');
+    return part;
+  }).filter(Boolean).join(', ');
+  const base=village&&(!person.postOffice||postOffice)?[village,postOffice].filter(Boolean).join(', '):local;
+  const line1=base+(base&&code&&/^\d{4}$/.test(code)?' - '+code:'');
   return {addressLine1:line1,addressLine2:[thana,district].filter(Boolean).join(', '),postalCode:/^\d{4}$/.test(code)?code:''};
 }
 export const workflowDefaults={religion:'ISLAM',education:'S.S.C',maritalStatus:'SINGLE',sameAddress:'Yes',onboarding:'By Direct Sales agent (Risk-2)',product:'Savings account',residence:'Resident Bangladeshi(Risk-1)',pep:'No',pepRelated:'No',ip:'No',transactions:'From BDT 1 million to 5 million (50 Lac)(Risk 2)',sourceCredible:'YES(Risk-1)'};
