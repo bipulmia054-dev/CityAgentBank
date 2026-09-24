@@ -2,6 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {applyProposals,undoChanges,remainingItems,fillKnownFields} from './ekyc-review.js';
 const sample=()=>({name:'OLD',people:[{name:'OLD',nid:'0123456789'},{name:'NOMINEE'}],ekyc:{confirmed:true},aiReview:{locks:['people.0.nid']}});
+test('workflow defaults and address parents fill without inventing customer declarations',()=>{
+  const next=fillKnownFields({people:[{}],ekyc:{thana:'MEHERPUR SADAR',permanent_district:'MEHERPUR'}});
+  assert.equal(next.ekyc.onboarding,'By Direct Sales agent (Risk-2)');assert.equal(next.ekyc.product,'Savings account');
+  assert.equal(next.ekyc.district,'MEHERPUR');assert.equal(next.ekyc.division,'KHULNA');assert.equal(next.ekyc.permanent_division,'KHULNA');
+  for(const key of ['pep','pepRelated','ip','residence','transactions','sourceCredible'])assert.equal(next.ekyc[key],undefined);
+  const existing=fillKnownFields({ekyc:{onboarding:'Walk in/Unsolicited (Risk-3)',product:'Current account',district:'DHAKA',division:'DHAKA'}});
+  assert.equal(existing.ekyc.product,'Current account');assert.equal(existing.ekyc.division,'DHAKA');
+  const districtOnly=fillKnownFields({ekyc:{district:'MEHERPUR'}});assert.equal(districtOnly.ekyc.thana,undefined);
+});
 test('one click maps saved personal, address, explicit risk and profession values without AI',()=>{
   const data={people:[{profession:'কৃষক',gender:'Male',religion:'Islam',education:'HSC',issuePlaceEn:'MEHERPUR'}],declaration:{monthlyIncome:'২০,০০০',district:'MEHERPUR',thana:'MEHERPUR SADAR'},details:{pep:'No'}};
   const next=fillKnownFields(data);

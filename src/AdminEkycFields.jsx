@@ -1,4 +1,5 @@
 import React from 'react';
+import {completeAddressParents} from './ekyc-defaults.js';
 import { relations, education, religions, professions, sectors, occupationLabels, products, onboarding, residence, transactions } from './ekyc-options.js';
 function Choice({label,value,onChange,options}) {
   return <label><span>{label}</span><select value={value || ''} onChange={e=>onChange(e.target.value)}>
@@ -12,7 +13,7 @@ function Text({label,value,onChange,type='text'}) {
 }
 export default function AdminEkycFields({caseData,onChange}) {
   const e=caseData.ekyc || {};
-  const config=(key,value)=>onChange({...caseData,ekyc:{...e,[key]:value,confirmed:false}});
+  const config=(key,value)=>onChange({...caseData,ekyc:completeAddressParents({...e,[key]:value,confirmed:false})});
   const nominee=(index,key,value)=>onChange({...caseData,ekyc:{...e,confirmed:false},people:caseData.people.map((p,i)=>i===index?{...p,[key]:value}:p)});
   const field=(key,label,type='text')=><Text key={key} label={label} type={type} value={e[key]} onChange={v=>config(key,v)}/>;
   const select=(key,label,options)=><Choice key={key} label={label} value={e[key]} options={options} onChange={v=>config(key,v)}/>;

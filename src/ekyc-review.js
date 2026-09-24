@@ -1,6 +1,7 @@
 import schema from '../ekyc_ai_schema.json' with {type:'json'};
 import {dateText} from '../chrome-extension/autofill-model.mjs';
 import {professions,occupationLabels} from './ekyc-options.js';
+import {workflowDefaults,completeAddressParents} from './ekyc-defaults.js';
 export const readPath=(value,path)=>path.split('.').reduce((v,k)=>v?.[k],value)??'';
 export function reviewFields(data){
   return schema.flatMap(f=>f.scope==='person'?(data.people||[]).flatMap((p,i)=>i===0&&['relationship','ekycAddressLine1','ekycAddressLine2'].includes(f.key)?[]:[{...f,path:`people.${i}.${f.key}`,label:`${i?`Nominee ${i}`:'Applicant'} · ${f.label}`}]):[{...f,path:`${f.scope}.${f.key}`,label:f.label.replace(/_/g,' ').replace(/([a-z])([A-Z])/g,'$1 $2').replace(/^./,c=>c.toUpperCase())}]);
@@ -41,6 +42,9 @@ export function fillKnownFields(data){
   if(match){for(const [key,value] of [['profession',professions[match[1]]],['sector',match[2]],['occupation',occupationLabels[match[3]]]]){
     if(!readPath(next,`ekyc.${key}`)&&value)put(`ekyc.${key}`,value);
   }}
+  for(const [key,value] of Object.entries(workflowDefaults))if(!readPath(next,`ekyc.${key}`))put(`ekyc.${key}`,value);
+  const address=completeAddressParents(next.ekyc);
+  for(const [key,value] of Object.entries(address))if(!readPath(next,`ekyc.${key}`))put(`ekyc.${key}`,value);
   return next===data?data:{...next,ekyc:{...next.ekyc,confirmed:false}};
 }
 export function applyProposals(data,proposals,selected){

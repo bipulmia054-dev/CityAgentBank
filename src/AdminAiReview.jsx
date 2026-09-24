@@ -21,7 +21,7 @@ export default function AdminAiReview({caseData,onChange,customerId,flush,getRev
       const output=await readJson(r);if(!r.ok)throw Error(output.error||'AI দিয়ে পূরণ হয়নি');
       if(!mounted.current)return;
       if(snapshot!==latest.current||getRevision()!==output.revision)throw Error('এর মধ্যে তথ্য বদলেছে, তাই AI তথ্য বসানো হয়নি। নিচে নিজে পূরণ করতে পারবেন।');
-      const next=applyProposals(snapshot,output.proposals,output.proposals.map(p=>p.path));
+      const next=fillKnownFields(applyProposals(snapshot,output.proposals,output.proposals.map(p=>p.path)));
       if(next!==snapshot)onChange(next,'AI Apply');
       setMessage(next!==snapshot?'স্পষ্ট তথ্য নিচের ফর্মে বসেছে। Auto-save হচ্ছে—Save status দেখুন। বাকি ঘর নিজে পূরণ বা সংশোধন করুন।':'নতুন স্পষ্ট তথ্য পাওয়া যায়নি। নিচের ফর্মে বাকি ঘর নিজে পূরণ করুন।');
     }catch(e){if(mounted.current)setMessage(e.message);}
