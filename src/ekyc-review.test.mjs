@@ -1,12 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {applyProposals,undoChanges,remainingItems,fillKnownFields} from './ekyc-review.js';
+import {workflowDefaults} from './ekyc-defaults.js';
 const sample=()=>({name:'OLD',people:[{name:'OLD',nid:'0123456789'},{name:'NOMINEE'}],ekyc:{confirmed:true},aiReview:{locks:['people.0.nid']}});
-test('workflow defaults and address parents fill without inventing customer declarations',()=>{
+test('operator-selected editable defaults fill blank fields and preserve overrides',()=>{
   const next=fillKnownFields({people:[{}],ekyc:{thana:'MEHERPUR SADAR',permanent_district:'MEHERPUR'}});
   assert.equal(next.ekyc.onboarding,'By Direct Sales agent (Risk-2)');assert.equal(next.ekyc.product,'Savings account');
   assert.equal(next.ekyc.district,'MEHERPUR');assert.equal(next.ekyc.division,'KHULNA');assert.equal(next.ekyc.permanent_division,'KHULNA');
-  for(const key of ['pep','pepRelated','ip','residence','transactions','sourceCredible'])assert.equal(next.ekyc[key],undefined);
+  for(const [key,value] of Object.entries(workflowDefaults))assert.equal(next.ekyc[key],value);
   const existing=fillKnownFields({ekyc:{onboarding:'Walk in/Unsolicited (Risk-3)',product:'Current account',district:'DHAKA',division:'DHAKA'}});
   assert.equal(existing.ekyc.product,'Current account');assert.equal(existing.ekyc.division,'DHAKA');
   const districtOnly=fillKnownFields({ekyc:{district:'MEHERPUR'}});assert.equal(districtOnly.ekyc.thana,undefined);
@@ -17,7 +18,15 @@ test('one click maps saved personal, address, explicit risk and profession value
   assert.equal(next.people[0].gender,'M');assert.equal(next.ekyc.religion,'ISLAM');assert.equal(next.ekyc.education,'H.S.C');
   assert.equal(next.ekyc.monthlyIncome,'20000');assert.equal(next.ekyc.district,'MEHERPUR');assert.equal(next.ekyc.pep,'No');
   assert.equal(next.ekyc.profession,'Farmer/Fishermen');assert.equal(next.ekyc.sector,'FARMER');assert.match(next.ekyc.occupation,/Farmer/);
-  assert.equal(next.ekyc.sourceCredible,undefined);assert.equal(next.ekyc.transactions,undefined);assert.equal(data.ekyc,undefined);
+  assert.equal(next.ekyc.sourceCredible,workflowDefaults.sourceCredible);assert.equal(next.ekyc.transactions,workflowDefaults.transactions);assert.equal(data.ekyc,undefined);
+});
+test('nominee address uses own full English address and never applicant address',()=>{
+  const data={people:[{addressEn:'APPLICANT ONLY',issuePlace:'মেহেরপুর'},{addressEn:'VILLAGE A, UNION B, MEHERPUR SADAR, MEHERPUR'},{addressEn:'OTHER VILLAGE, OTHER DISTRICT'},{addressBn:'অজানা'},{addressEn:'FULL ADDRESS',ekycAddressLine1:'MANUAL'}]};
+  const next=fillKnownFields(data);
+  assert.equal(next.people[1].ekycAddressLine1,'VILLAGE A, UNION B');assert.equal(next.people[1].ekycAddressLine2,'MEHERPUR SADAR, MEHERPUR');
+  assert.equal(next.people[2].ekycAddressLine1,'OTHER VILLAGE');assert.equal(next.people[2].ekycAddressLine2,'OTHER DISTRICT');assert.equal(next.people[3].ekycAddressLine1,undefined);
+  assert.equal(next.people[4].ekycAddressLine1,'MANUAL');assert.equal(next.ekyc.issuePlace,'MEHERPUR');
+  assert.equal(fillKnownFields({people:[{}]}).ekyc.issuePlace,undefined);
 });
 test('known fill preserves manual values, locks and ambiguous jobs',()=>{
   const data={people:[{profession:'employee',education:'HSC'}],ekyc:{religion:'HINDU'},aiReview:{locks:['ekyc.education']}};

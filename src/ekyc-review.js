@@ -1,7 +1,7 @@
 import schema from '../ekyc_ai_schema.json' with {type:'json'};
 import {dateText} from '../chrome-extension/autofill-model.mjs';
 import {professions,occupationLabels} from './ekyc-options.js';
-import {workflowDefaults,completeAddressParents} from './ekyc-defaults.js';
+import {workflowDefaults,completeAddressParents,nomineeAddress} from './ekyc-defaults.js';
 export const readPath=(value,path)=>path.split('.').reduce((v,k)=>v?.[k],value)??'';
 export function reviewFields(data){
   return schema.flatMap(f=>f.scope==='person'?(data.people||[]).flatMap((p,i)=>i===0&&['relationship','ekycAddressLine1','ekycAddressLine2'].includes(f.key)?[]:[{...f,path:`people.${i}.${f.key}`,label:`${i?`Nominee ${i}`:'Applicant'} · ${f.label}`}]):[{...f,path:`${f.scope}.${f.key}`,label:f.label.replace(/_/g,' ').replace(/([a-z])([A-Z])/g,'$1 $2').replace(/^./,c=>c.toUpperCase())}]);
@@ -19,9 +19,11 @@ export function fillKnownFields(data){
     const current=readPath(data,f.path);
     const candidates=current?[current]:f.scope==='ekyc'?[readPath(data,`people.0.${f.key}`),readPath(data,`details.${f.key}`),readPath(data,`declaration.${f.key}`)]:[];
     if(f.path==='ekyc.issuePlace'&&!current)candidates.push(readPath(data,'people.0.issuePlaceEn'));
+    if(f.path==='ekyc.issuePlace'&&!current){const place=readPath(data,'people.0.issuePlace');if(place)candidates.push(String(place).trim()==='মেহেরপুর'?'MEHERPUR':place);}
     if(f.path==='details.email'&&!current)candidates.push(readPath(data,'people.0.email'));
     for(let value of candidates){
       if(value===''||value==null)continue;
+      if(f.key==='issuePlace'){if(/[\u0980-\u09ff]/.test(String(value)))continue;value=String(value).trim().toUpperCase();}
       if(f.key==='gender')value=({male:'M',female:'F'})[String(value).toLowerCase()]||value;
       if(f.options){const matches=f.options.filter(v=>optionToken(v)===optionToken(value));if(matches.length!==1)continue;value=matches[0];}
       if(f.key==='monthlyIncome'){value=String(value).replace(/[০-৯]/g,c=>String('০১২৩৪৫৬৭৮৯'.indexOf(c))).replace(/,/g,'');if(!/^[1-9]\d*(\.\d{1,2})?$/.test(value))continue;}
@@ -42,6 +44,11 @@ export function fillKnownFields(data){
   if(match){for(const [key,value] of [['profession',professions[match[1]]],['sector',match[2]],['occupation',occupationLabels[match[3]]]]){
     if(!readPath(next,`ekyc.${key}`)&&value)put(`ekyc.${key}`,value);
   }}
+  (next.people||[]).forEach((person,index)=>{if(!index)return;
+    // Never mix manual partial addresses with a reconstructed full address.
+    if(person.ekycAddressLine1||person.ekycAddressLine2)return;
+    for(const [key,value] of Object.entries(nomineeAddress(person)))put(`people.${index}.${key}`,value);
+  });
   for(const [key,value] of Object.entries(workflowDefaults))if(!readPath(next,`ekyc.${key}`))put(`ekyc.${key}`,value);
   const address=completeAddressParents(next.ekyc);
   for(const [key,value] of Object.entries(address))if(!readPath(next,`ekyc.${key}`))put(`ekyc.${key}`,value);

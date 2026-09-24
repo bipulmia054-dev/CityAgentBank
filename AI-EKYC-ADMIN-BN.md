@@ -1,5 +1,11 @@
 # Admin AI eKYC Review
 
+## Operator-configured editable defaults
+
+A–Z খোলার সময় খালি ঘরে ISLAM, S.S.C, SINGLE, same address Yes, Direct Sales Agent, Resident Bangladeshi, PEP/related/IP No, Savings account, yearly 1–5 million ও source YES বসে। এগুলো operator-selected draft defaults, AI verification বা প্রমাণ নয়। ব্যাংকে পাঠানোর আগে গ্রাহক অনুযায়ী মিলিয়ে পরিবর্তন করতে হবে। Existing আলাদা উত্তর ও locks বজায় থাকে। Profession AI/explicit work অনুযায়ী; issue place NID/saved issue place থেকেই। Nominee-এর নিজের English address ভাগ করে বসে, Bengali address AI transliterate করে।
+
+Applications-এ নাম, ID, phone, email ও collector text search status tab-এর সঙ্গে কাজ করে।
+
 Updated autofill: known personal/address values and explicit saved risk answers map into dropdowns immediately. Safe case/spacing differences are normalized. Exact known occupations map to profession/sector/occupation; AI handles supported remaining values. NID address is an editable starting address, not proof that present equals permanent. Unknown risk declarations are not invented. Married drafts save even if spouse name is not yet available.
 
 Admin Applications → A–Z Preview/Edit এবং Records → Full Editor-এ AI review panel আছে।

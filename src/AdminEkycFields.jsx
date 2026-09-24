@@ -1,4 +1,5 @@
-import React from 'react';
+import React,{useEffect,useRef} from 'react';
+import {fillKnownFields} from './ekyc-review.js';
 import {completeAddressParents} from './ekyc-defaults.js';
 import { relations, education, religions, professions, sectors, occupationLabels, products, onboarding, residence, transactions } from './ekyc-options.js';
 function Choice({label,value,onChange,options}) {
@@ -12,6 +13,8 @@ function Text({label,value,onChange,type='text'}) {
   return <label><span>{label}</span><input type={type} autoComplete="off" value={value ?? ''} onChange={e=>onChange(e.target.value)}/></label>;
 }
 export default function AdminEkycFields({caseData,onChange}) {
+  const initialized=useRef(false);
+  useEffect(()=>{if(initialized.current)return;initialized.current=true;const next=fillKnownFields(caseData);if(next!==caseData)onChange(next);},[caseData,onChange]);
   const e=caseData.ekyc || {};
   const config=(key,value)=>onChange({...caseData,ekyc:completeAddressParents({...e,[key]:value,confirmed:false})});
   const nominee=(index,key,value)=>onChange({...caseData,ekyc:{...e,confirmed:false},people:caseData.people.map((p,i)=>i===index?{...p,[key]:value}:p)});
@@ -19,7 +22,7 @@ export default function AdminEkycFields({caseData,onChange}) {
   const select=(key,label,options)=><Choice key={key} label={label} value={e[key]} options={options} onChange={v=>config(key,v)}/>;
   return <section className="reviewPerson">
     <h2>eKYC Autofill — অতিরিক্ত Customer Details</h2>
-    <p>শুধু যাচাই করা তথ্য দিন। অজানা ঘর খালি রাখুন; extension অনুমান করবে না। পরিবর্তন Auto-save হবে।</p>
+    <p>AI Fill-এ আপনার নির্ধারিত editable defaults বসবে; এগুলো যাচাইয়ের ফল নয়। গ্রাহকের সঙ্গে মিলিয়ে প্রয়োজনমতো পরিবর্তন করুন। পরিবর্তন Auto-save হবে।</p>
     <details className="ekycSection" open><summary>১ · Personal & Profession</summary><div className="reviewFields">
       {select('religion','Religion',religions)}{select('education','Education',education)}
       {select('maritalStatus','Marital Status',['SINGLE','MARRIED'])}
@@ -40,7 +43,7 @@ export default function AdminEkycFields({caseData,onChange}) {
       <Text label="Nominee Address Line 2 (English)" value={p.ekycAddressLine2} onChange={v=>nominee(i+1,'ekycAddressLine2',v)}/>
     </div></details>)}
     <details className="ekycSection" open><summary>৪ · Risk Grading</summary>
-    <p>বার্ষিক লেনদেন মাসিক আয় নয়। PEP/IP ও source of funds সবার জন্য একই ধরে নেওয়া হবে না। Business / multiple nominee-এর unmapped অংশ manually পূরণ করুন।</p>
+    <p>এখানকার default উত্তর গ্রাহকভিত্তিক যাচাইয়ের বিকল্প নয়। PEP/IP, residence, source of funds ও বার্ষিক লেনদেন ব্যাংকে পাঠানোর আগে মিলিয়ে বদলান। পেশা AI তথ্য অনুযায়ী পূরণ করবে।</p>
     <div className="reviewFields">
       {select('onboarding','Type of Onboarding',onboarding)}{select('residence','Client residence',residence)}
       {select('pep','Client PEP / Chief / High Official?',['Yes','No'])}
