@@ -1,8 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {applyProposals,undoChanges,remainingItems,fillKnownFields} from './ekyc-review.js';
+import {applyProposals,undoChanges,remainingItems,fillKnownFields,lockReviewedFields,unlockReviewedFields} from './ekyc-review.js';
 import {workflowDefaults} from './ekyc-defaults.js';
 const sample=()=>({name:'OLD',people:[{name:'OLD',nid:'0123456789'},{name:'NOMINEE'}],ekyc:{confirmed:true},aiReview:{locks:['people.0.nid']}});
+test('review lock covers filled fields, preserves data and survives JSON persistence',()=>{
+  const data=fillKnownFields(sample());const locked=JSON.parse(JSON.stringify(lockReviewedFields(data)));
+  assert.ok(locked.aiReview.locks.includes('ekyc.pep'));assert.ok(locked.aiReview.locks.includes('people.0.name'));
+  assert.ok(!locked.aiReview.locks.includes('people.0.dob'));assert.equal(locked.ekyc.confirmed,true);
+  const proposal={path:'people.0.name',before:'OLD',value:'AI CHANGE'};
+  assert.equal(applyProposals(locked,[proposal],[proposal.path]),locked);
+  const unlocked=unlockReviewedFields(locked);assert.equal(unlocked.aiReview.locks.length,0);assert.equal(unlocked.people[0].name,'OLD');
+  assert.equal(applyProposals(unlocked,[proposal],[proposal.path]).people[0].name,'AI CHANGE');
+});
 test('operator-selected editable defaults fill blank fields and preserve overrides',()=>{
   const next=fillKnownFields({people:[{}],ekyc:{thana:'MEHERPUR SADAR',permanent_district:'MEHERPUR'}});
   assert.equal(next.ekyc.onboarding,'By Direct Sales agent (Risk-2)');assert.equal(next.ekyc.product,'Savings account');

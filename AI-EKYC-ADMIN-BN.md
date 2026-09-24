@@ -1,5 +1,7 @@
 # Admin AI eKYC Review
 
+তথ্য মিলিয়ে “মিলিয়ে Save ও Lock করুন” চাপলে populated eKYC/personal/nominee text fields AI-Lock হয় এবং server save সফল হওয়ার পরেই Saved message আসে। Unlock বাটনে সংশোধন করা যায়; সরাসরি manually বদলানো field-এর lock উঠে যায়। Extension Start Auto Fill নতুন saved data নেয়; Resume পুরোনো plan চালায়। এটি ব্যাংকের final submit নয়।
+
 ## Operator-configured editable defaults
 
 A–Z খোলার সময় খালি ঘরে ISLAM, S.S.C, SINGLE, same address Yes, Direct Sales Agent, Resident Bangladeshi, PEP/related/IP No, Savings account, yearly 1–5 million ও source YES বসে। এগুলো operator-selected draft defaults, AI verification বা প্রমাণ নয়। ব্যাংকে পাঠানোর আগে গ্রাহক অনুযায়ী মিলিয়ে পরিবর্তন করতে হবে। Existing আলাদা উত্তর ও locks বজায় থাকে। Profession AI/explicit work অনুযায়ী; issue place NID/saved issue place থেকেই। Nominee-এর নিজের English address ভাগ করে বসে, Bengali address AI transliterate করে।

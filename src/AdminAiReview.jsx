@@ -1,13 +1,28 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {flushSync} from 'react-dom';
 import {readJson} from './api-response.js';
-import {applyProposals,fillKnownFields} from './ekyc-review.js';
+import {applyProposals,fillKnownFields,lockReviewedFields,unlockReviewedFields,reviewFields,readPath} from './ekyc-review.js';
 
 export default function AdminAiReview({caseData,onChange,customerId,flush,getRevision}){
   const [busy,setBusy]=useState(false),[message,setMessage]=useState('');
   const latest=useRef(caseData);latest.current=caseData;
   const mounted=useRef(true),running=useRef(false);
   useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
+  async function saveReview(lock){
+    if(running.current)return;
+    running.current=true;setBusy(true);setMessage('Server-এ save হচ্ছে…');
+    const signature=data=>JSON.stringify([data.aiReview?.locks||[],reviewFields(data).map(f=>[f.path,readPath(data,f.path)])]);
+    try{
+      const next=lock?lockReviewedFields(latest.current):unlockReviewedFields(latest.current);
+      const expected=signature(next);
+      flushSync(()=>onChange(next,'Admin edit'));
+      if(!(await flush()))throw Error('Server-এ Save হয়নি। Save error ঠিক করে আবার বাটন চাপুন।');
+      if(!mounted.current)return;
+      if(signature(latest.current)!==expected){setMessage('Save-এর সময় তথ্য পরিবর্তন হয়েছে। আবার মিলিয়ে Save ও Lock করুন।');return;}
+      setMessage(lock?'Server-এ Saved ও AI-Locked। Extension-এ এই customer নির্বাচন করে Start Auto Fill চাপুন—নতুন saved তথ্য আসবে; শুধু Resume পুরোনো তথ্য চালায়।':'Server-এ Unlock হয়েছে। পরিবর্তন করে আবার Save ও Lock করতে পারবেন।');
+    }catch(e){if(mounted.current)setMessage(e.message);}
+    finally{running.current=false;if(mounted.current)setBusy(false);}
+  }
   async function fill(){
     if(running.current)return;
     running.current=true;setBusy(true);setMessage('');
@@ -30,6 +45,8 @@ export default function AdminAiReview({caseData,onChange,customerId,flush,getRev
   return <section className="aiReviewPanel">
     <div className="aiReviewHeading"><div><h2>AI দিয়ে eKYC পূরণ</h2><p>একবার ক্লিক করুন—স্পষ্ট তথ্য সরাসরি নিচের ফর্মে বসবে ও Auto-save হবে। অজানা তথ্য নিজে পূরণ করুন।</p></div></div>
     <div className="aiActions"><button className="primary" disabled={busy} onClick={fill}>{busy?'তথ্য পূরণ হচ্ছে…':'AI দিয়ে পূরণ ও Auto-save'}</button></div>
+    <div className="aiActions"><button className="primary" disabled={busy} onClick={()=>saveReview(true)}>মিলিয়ে Save ও Lock করুন</button>{!!caseData.aiReview?.locks?.length&&<button className="secondary" disabled={busy} onClick={()=>saveReview(false)}>Unlock করে পরিবর্তন করুন</button>}</div>
+    <p>AI-Lock: {caseData.aiReview?.locks?.length||0}টি ঘর। Save ও Lock চাপার আগে default উত্তরগুলো গ্রাহকের সঙ্গে মিলিয়ে নিন। Lock করা ঘর AI বদলাবে না; হাতে কোনো ঘর বদলালে সেই ঘরের Lock উঠে যাবে।</p>
     <p className="aiNotice">এই customer-এর NID, Income Declaration ও প্রয়োজনীয় তথ্য Gemini API-তে যাবে। অস্পষ্ট তথ্য বা অজানা Risk উত্তর অনুমান করে বসানো হবে না।</p>
     {message&&<p role="status">{message}</p>}
   </section>;

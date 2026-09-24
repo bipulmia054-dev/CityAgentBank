@@ -11,6 +11,13 @@ export function writePath(data,path,value){
   const write=(current,index)=>{const key=keys[index];const copy=Array.isArray(current)?[...current]:{...current};copy[key]=index===keys.length-1?value:write(current?.[key],index+1);return copy;};
   return write(data,0);
 }
+export function lockReviewedFields(data){
+  const paths=reviewFields(data).filter(f=>String(readPath(data,f.path)).trim()).map(f=>f.path);
+  return {...data,aiReview:{...data.aiReview,locks:[...new Set([...(data.aiReview?.locks||[]),...paths])]},ekyc:{...data.ekyc,confirmed:true}};
+}
+export function unlockReviewedFields(data){
+  return {...data,aiReview:{...data.aiReview,locks:[]},ekyc:{...data.ekyc,confirmed:false}};
+}
 const optionToken=value=>String(value??'').replace(/[\s.()/\-]+/g,'').toLowerCase();
 export function fillKnownFields(data){
   let next=data;const locks=new Set(data.aiReview?.locks||[]);
