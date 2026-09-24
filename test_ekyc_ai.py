@@ -10,6 +10,18 @@ import local_server as server
 
 
 class AiRulesTest(unittest.TestCase):
+    def test_known_values_fill_even_when_ai_omits_them(self):
+        case={'people':[{'profession':'Farmer','education':'HSC','religion':'ISLAM'}], 'declaration':{'monthlyIncome':'২০,০০০'},'details':{'pep':'No'}}
+        response=MagicMock();response.__enter__.return_value.read.return_value=json.dumps({'candidates':[{'content':{'parts':[{'text':'{"proposals":[],"quality":[]}'}]}}]}).encode()
+        with patch('ekyc_ai.urllib.request.urlopen',return_value=response):result=ekyc_ai.prepare(case,'fake-key')
+        values={p['path']:p['value'] for p in result['proposals']}
+        self.assertEqual(values['ekyc.education'],'H.S.C')
+        self.assertEqual(values['ekyc.profession'],'Farmer/Fishermen')
+        self.assertEqual(values['ekyc.sector'],'FARMER')
+        self.assertEqual(values['ekyc.monthlyIncome'],'20000')
+        self.assertEqual(values['ekyc.pep'],'No')
+        self.assertNotIn('ekyc.sourceCredible',values)
+
     def test_duplicate_processing_rejected_and_guard_released(self):
         with patch('ekyc_ai.prepare',side_effect=RuntimeError('failure')):
             with self.assertRaises(RuntimeError):ekyc_ai.prepare_customer(99,{},'fake','all')

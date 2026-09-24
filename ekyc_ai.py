@@ -76,6 +76,40 @@ def normalize(field, value):
     return value
 
 
+def known_proposals(case, available):
+    result=[]
+    for path,field in available.items():
+        current=get_value(case,path)
+        candidates=[path] if current!='' else []
+        if field['scope']=='ekyc' and current=='':
+            candidates += [f'people.0.{field["key"]}',f'details.{field["key"]}',f'declaration.{field["key"]}']
+        if path=='ekyc.issuePlace' and current=='':candidates.append('people.0.issuePlaceEn')
+        if path=='details.email' and current=='':candidates.append('people.0.email')
+        for source in candidates:
+            raw=get_value(case,source)
+            if raw=='':continue
+            value=normalize(field,str(raw).replace(',','') if field['key']=='monthlyIncome' else str(raw))
+            if not value:continue
+            if value!=str(current):result.append({'path':path,'before':current,'value':value,'source':source,'evidence':str(raw)[:500]})
+            break
+    jobs=[(('farmer','farmer/fishermen','কৃষক'),1,'FARMER',17),
+          (('housewife','homemaker','গৃহিণী','গৃহিনী'),0,'HOUSEWIFE',5),
+          (('student','ছাত্র','ছাত্রী'),10,None,15),
+          (('retired','retired persons','অবসরপ্রাপ্ত'),8,'RETIRED',16),
+          (('salesman','sales man','সেলসম্যান','সেলস ম্যান'),5,'SALARY/SERVICE HOLDER',13)]
+    job=str(get_value(case,'people.0.profession')).strip().casefold()
+    all_fields=fields(case)
+    for names,profession,sector,occupation in jobs:
+        if job not in names:continue
+        values={'profession':all_fields['ekyc.profession']['options'][profession], 'sector':sector,'occupation':all_fields['ekyc.occupation']['options'][occupation]}
+        for key,value in values.items():
+            path='ekyc.'+key
+            if value and path in available and get_value(case,path)=='' and not any(p['path']==path for p in result):
+                result.append({'path':path,'before':'','value':value,'source':'people.0.profession','evidence':job})
+        break
+    return result
+
+
 def prepare(case, api_key, mode='all', income_image=None):
     allowed = fields(case)
     locks = set((case.get('aiReview') or {}).get('locks') or [])
@@ -149,7 +183,7 @@ Only propose paths in ALLOWED. Only sources in SOURCES. Do not copy example valu
     text=''.join(p.get('text','') for p in result.get('candidates',[{}])[0].get('content',{}).get('parts',[]))
     output=json.loads(text)
     if not isinstance(output,dict): raise ValueError('AI সঠিক response দেয়নি। আবার চেষ্টা করুন।')
-    proposals=[];seen=set()
+    proposals=known_proposals(case,available);seen={p['path'] for p in proposals}
     quality=[q for q in output.get('quality',[]) if isinstance(q,dict) and q.get('source') in image_sources and q.get('status') in ('readable','unclear','missing')]
     unreadable={q['source'] for q in quality if q['status']!='readable'}
     readable={q['source'] for q in quality if q['status']=='readable'}
