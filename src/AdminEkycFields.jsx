@@ -6,11 +6,11 @@ function Choice({label,value,onChange,options}) {
   return <label><span>{label}</span><select value={value || ''} onChange={e=>onChange(e.target.value)}>
     <option value="">নির্বাচন করুন / অজানা</option>
     {value && !options.includes(value) && <option value={value}>{value} — মিলিয়ে নির্বাচন করুন</option>}
-    {options.map(o=><option key={o} value={o}>{o}</option>)}
+    {options.map(o=><option key={o} value={o}>{o.toUpperCase()}</option>)}
   </select></label>;
 }
 function Text({label,value,onChange,type='text'}) {
-  return <label><span>{label}</span><input type={type} autoComplete="off" value={value ?? ''} onChange={e=>onChange(e.target.value)}/></label>;
+  return <label><span>{label}</span><input type={type} autoComplete="off" value={value ?? ''} onChange={e=>onChange(e.target.value.toUpperCase())}/></label>;
 }
 export default function AdminEkycFields({caseData,onChange}) {
   const initialized=useRef(false);
@@ -32,7 +32,7 @@ export default function AdminEkycFields({caseData,onChange}) {
     </div></details>
     <details className="ekycSection" open><summary>২ · Present & Permanent Address</summary><h3>Present Address (English)</h3><div className="reviewFields">
       {field('division','Division')}{field('district','District')}{field('thana','Upazila / Thana')}
-      {field('postalCode','Postal Code')}{field('addressLine1','Address Line 1 — Village / Union')}{field('addressLine2','Address Line 2 — Thana / District')}
+      {field('postalCode','Postal Code')}{field('addressLine1','Address Line 1 — Village, Post Office - Postcode')}{field('addressLine2','Address Line 2 — Thana, District')}
       {select('sameAddress','Permanent Address same as Present?',['Yes','No'])}
     </div>
     {e.sameAddress==='No' && <><h3>Permanent Address</h3><div className="reviewFields">{['division','district','thana','postalCode','addressLine1','addressLine2'].map(key=>field('permanent_'+key,key))}</div></>}

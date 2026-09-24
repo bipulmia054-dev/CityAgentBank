@@ -3,6 +3,16 @@ import assert from 'node:assert/strict';
 import {applyProposals,undoChanges,remainingItems,fillKnownFields,lockReviewedFields,unlockReviewedFields} from './ekyc-review.js';
 import {workflowDefaults} from './ekyc-defaults.js';
 const sample=()=>({name:'OLD',people:[{name:'OLD',nid:'0123456789'},{name:'NOMINEE'}],ekyc:{confirmed:true},aiReview:{locks:['people.0.nid']}});
+test('English address formatting keeps locality, postcode and documented name prefix',()=>{
+  const data={people:[{name:'Mosa: Asma',nameBn:'মোছাঃ আসমা',village:'Chandbil',postOffice:'আমঝুপী',postCode:'৭১০১'},{village:'Other Village',postOffice:'Other Post',postCode:'1234',thana:'Other Thana',district:'Other District'}],ekyc:{district:'মেহেরপুর',thana:'মেহেরপুর সদর'}};
+  const next=fillKnownFields(data);
+  assert.equal(next.ekyc.district,'MEHERPUR');assert.equal(next.ekyc.thana,'MEHERPUR SADAR');
+  assert.equal(next.ekyc.addressLine1,'CHANDBIL, AMJHUPI - 7101');assert.equal(next.ekyc.addressLine2,'MEHERPUR SADAR, MEHERPUR');assert.equal(next.ekyc.postalCode,'7101');
+  assert.equal(next.people[1].ekycAddressLine1,'OTHER VILLAGE, OTHER POST - 1234');assert.equal(next.people[1].ekycAddressLine2,'OTHER THANA, OTHER DISTRICT');
+  assert.equal(next.people[0].name,'MST. ASMA');assert.equal(next.name,'MST. ASMA');assert.equal(next.people[0].nameBn,'মোছাঃ আসমা');
+  const locked=fillKnownFields({...data,aiReview:{locks:['ekyc.district','people.0.name']}});assert.equal(locked.ekyc.district,'মেহেরপুর');assert.equal(locked.people[0].name,'Mosa: Asma');
+  const documented=fillKnownFields({people:[{name:'Mosa Example'}]});assert.equal(documented.people[0].name,'MOSA EXAMPLE');
+});
 test('review lock covers filled fields, preserves data and survives JSON persistence',()=>{
   const data=fillKnownFields(sample());const locked=JSON.parse(JSON.stringify(lockReviewedFields(data)));
   assert.ok(locked.aiReview.locks.includes('ekyc.pep'));assert.ok(locked.aiReview.locks.includes('people.0.name'));

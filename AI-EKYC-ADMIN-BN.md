@@ -1,5 +1,7 @@
 # Admin AI eKYC Review
 
+English autofill text uppercase; bank dropdown values keep their exact internal spelling while labels display uppercase. Address line 1: VILLAGE, POST OFFICE - POSTCODE; line 2: THANA, DISTRICT. Known Bengali locality labels normalize to English; other Bengali address text needs AI transliteration. Never replace a different district/thana with Meherpur. Bengali-only মোছাঃ name prefix maps to MST.; exact NID English spelling takes precedence. Existing locks remain protected—Unlock before reprocessing old values, then Save & Lock again.
+
 তথ্য মিলিয়ে “মিলিয়ে Save ও Lock করুন” চাপলে populated eKYC/personal/nominee text fields AI-Lock হয় এবং server save সফল হওয়ার পরেই Saved message আসে। Unlock বাটনে সংশোধন করা যায়; সরাসরি manually বদলানো field-এর lock উঠে যায়। Extension Start Auto Fill নতুন saved data নেয়; Resume পুরোনো plan চালায়। এটি ব্যাংকের final submit নয়।
 
 ## Operator-configured editable defaults
